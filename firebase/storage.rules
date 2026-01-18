@@ -1,0 +1,30 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAdmin() {
+      return request.auth != null &&
+        exists(/databases/(default)/documents/adminUids/$(request.auth.uid));
+    }
+
+    function municipalProfile() {
+      return firestore.get(/databases/(default)/documents/municipalUsers/$(request.auth.uid));
+    }
+
+    function canReadMunicipalCity(cityId) {
+      let profile = municipalProfile();
+      return request.auth != null &&
+        profile.exists() &&
+        profile.data.active == true &&
+        profile.data.cityId == cityId;
+    }
+
+    match /garage/avatars/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /exports/{cityId}/{date}/{allPaths=**} {
+      allow read: if canReadMunicipalCity(cityId);
+    }
+  }
+}

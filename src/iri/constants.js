@@ -1,0 +1,11 @@
+export const DEFAULT_H3_RESOLUTION = 11;
+export const DEFAULT_SAMPLE_RATE_HZ = 50;
+export const GPS_ACCURACY_MAX_M = 25;
+export const HANDLING_TRIM_MS = 1000;
+export const SPEED_MIN_MPS = 3;
+export const SPEED_MAX_MPS = 40;
+export const SPEED_REF_MPS = 15;
+export const SPEED_NORMALIZATION_EXP = 1.0;
+export const TURN_RATE_SOFT_THRESHOLD_RAD_S = 0.6;
+export const TURN_RATE_HARD_THRESHOLD_RAD_S = 1.2;
+export const CITY_ID_DEFAULT = "metro_v1";

@@ -1,0 +1,211 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/adminUids/$(request.auth.uid));
+    }
+
+    function isMunicipalUser() {
+      return request.auth != null && request.auth.token.municipal == true;
+    }
+
+    // Prefer custom claims to avoid extra document reads when evaluating rules.
+    function canReadMunicipalCity(cityId) {
+      return request.auth != null &&
+        request.auth.token.municipalActive == true &&
+        request.auth.token.cityId == cityId;
+    }
+
+    function currentMeta() {
+      return get(/databases/$(database)/documents/garageMeta/current);
+    }
+
+    // Development access helper:
+    // grant read in non-prod when the user has a debug claim (dev=true) or is signed in with emulator creds.
+    function isDevUser() {
+      return request.auth != null &&
+        (request.auth.token.dev == true ||
+         request.auth.token.debug == true ||
+         request.auth.token.firebase.sign_in_provider == "password");
+    }
+
+    match /usernames/{uname} {
+      // Availability checks
+      allow get: if true;
+      allow list: if false;
+
+      // Claim username once (unique by doc id)
+      allow create: if request.auth != null
+                && request.resource.data.uid == request.auth.uid
+                && request.resource.data.usernameLower == uname
+                && !exists(/databases/$(database)/documents/usernames/$(uname));
+
+      // Optional: allow owner to update their own username doc (idempotent)
+      allow update: if request.auth != null && resource.data.uid == request.auth.uid;
+
+      allow delete: if false;
+    }
+
+    match /users/{uid} {
+      // Allow the signed-in user to write their own profile doc
+      allow get: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid;
+
+      // prevent dumping all users
+      allow list: if false;
+
+      allow delete: if false;
+    }
+
+    match /adminUids/{uid} {
+      // allow signed-in users to read their own admin doc (portal verifies access)
+      allow read: if request.auth != null && request.auth.uid == uid;
+
+      // keep writes locked down (v1: console-only)
+      allow write: if false;
+    }
+
+    match /municipalUsers/{uid} {
+      // allow a user to read ONLY their own municipal access doc (for legacy tooling)
+      allow read: if request.auth != null && request.auth.uid == uid;
+
+      // keep writes admin-only (or console-only)
+      allow write: if request.auth != null
+        && exists(/databases/$(database)/documents/adminUids/$(request.auth.uid));
+    }
+
+    match /garageMeta/{docId} {
+      allow read: if docId == "current";
+      allow write: if isAdmin();
+    }
+
+    match /garageAvatars/{avatarId} {
+      allow read: if currentMeta().exists() &&
+        avatarId == currentMeta().data.currentAvatarId &&
+        resource.data.published == true;
+      allow write: if isAdmin();
+    }
+
+    match /garageAudit/{document=**} {
+      allow write: if isAdmin();
+    }
+
+    match /appContentDrafts/{pageKey} {
+      allow read, write: if isAdmin();
+    }
+
+    match /appContent/{pageKey} {
+      allow read: if resource.data.published == true;
+      allow write: if isAdmin();
+
+      match /revisions/{revId} {
+        allow read, write: if isAdmin();
+      }
+    }
+
+    match /educationDrafts/{draftId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /educationCards/{cardId} {
+      allow read: if resource.data.published == true;
+      allow write: if isAdmin();
+
+      match /revisions/{revId} {
+        allow read, write: if isAdmin();
+      }
+    }
+
+    match /appContent/{document=**} {
+      allow write: if isAdmin();
+    }
+
+    match /revisions/{document=**} {
+      allow write: if isAdmin();
+    }
+
+    match /segmentNormalizedDaily/{cityId}/{date} {
+      match /h3/{h3} {
+        allow read: if true;
+      }
+    }
+
+    // Raw segment telemetry
+    match /telemetrySegmentPasses/{segmentId} {
+      // Allow any signed-in user to read, plus municipal/admin (legacy portals)
+      allow read: if request.auth != null ||
+        isAdmin() ||
+        (isMunicipalUser() &&
+          resource.data.cityId != null &&
+          canReadMunicipalCity(resource.data.cityId));
+
+      // Mobile uploaders write segment telemetry
+      allow write: if true;
+    }
+
+    match /telemetryPotholes/{potholeId} {
+      allow read: if isAdmin() ||
+        (isMunicipalUser() &&
+          resource.data.cityId != null &&
+          canReadMunicipalCity(resource.data.cityId));
+      allow write: if true;
+    }
+
+    match /potholeHotspotsDaily/{cityId}/{date} {
+      match /points/{id} {
+        allow read: if true;
+      }
+    }
+
+    match /municipalDaily/{cityId}/{date} {
+      allow read: if true;
+    }
+    match /contentPages/{slug} {
+      allow read: if true;
+    }
+
+    match /faqs/{id} {
+      allow read: if true;
+    }
+
+    match /supportInfo/{id} {
+      allow read: if true;
+    }
+    match /contentPages/{slug} { 
+      allow read: if true; 
+    }
+    match /faqs/{id} { 
+      allow read: if true; 
+    }
+    match /supportInfo/{id} { 
+      allow read: if true; 
+    }
+
+    // Username claims and user profile
+    match /usernames/{uname} {
+      // Allow checking a single username document (availability check)
+      allow get: if true;
+
+      // Prevent enumerating all usernames
+      allow list: if false;
+
+      // Only the signed-in user can claim a username doc that matches the doc id
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.uid
+        && request.resource.data.usernameLower == uname
+        && !exists(/databases/$(database)/documents/usernames/$(uname));
+
+      // Allow user to update only their own username doc
+      allow update: if request.auth != null && resource.data.uid == request.auth.uid;
+
+      // Disallow deletes (prevent release)
+      allow delete: if false;
+    }
+
+    match /users/{uid} {
+      allow read: if true;
+      allow create, update: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "MileMend",
+    "slug": "milemend",
+    "version": "1.0.0",
+    "ios": {
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Milemend needs your location to map potholes and road damage while you drive.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Allowing location access Always lets Milemend detect and map road damage in the background.",
+        "NSLocationAlwaysUsageDescription": "Allowing location access Always lets Milemend detect and map road damage in the background.",
+        "UIBackgroundModes": ["location"]
+      }
+    },
+    "android": {
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION"
+      ]
+    }
+  }
+}

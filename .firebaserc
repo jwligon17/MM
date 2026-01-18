@@ -1,0 +1,17 @@
+{
+  "projects": {
+    "default": "milemend-9ed78"
+  },
+  "targets": {
+    "milemend-9ed78": {
+      "hosting": {
+        "garage-admin": [
+          "garage-admin-site-id"
+        ],
+        "municipal-portal": [
+          "municipal-portal-site-id"
+        ]
+      }
+    }
+  }
+}

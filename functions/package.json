@@ -1,0 +1,12 @@
+{
+  "name": "milemend-functions",
+  "private": true,
+  "main": "index.js",
+  "engines": {
+    "node": "18"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.1",
+    "firebase-functions": "^4.4.1"
+  }
+}
