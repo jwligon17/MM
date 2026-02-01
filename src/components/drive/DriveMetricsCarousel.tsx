@@ -3,12 +3,10 @@ import {
   FlatList,
   NativeScrollEvent,
   NativeSyntheticEvent,
-  Platform,
   StyleSheet,
   Switch,
   Text,
   View,
-  useWindowDimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { colors } from "../../styles";
@@ -44,24 +42,11 @@ const DriveMetricsCarousel: React.FC<DriveMetricsCarouselProps> = ({
   roadState = "smooth",
 }) => {
   const [activeIndex, setActiveIndex] = useState(0);
-  const { width: screenW } = useWindowDimensions();
-  const CARD_WIDTH = Math.round(Math.max(0, Math.min(screenW - 48, 420)));
-  const GAP = screenW < 360 ? 12 : 16;
-  const SIDE_PADDING = (screenW - CARD_WIDTH) / 2;
-  const SNAP = CARD_WIDTH + GAP;
-  const isIOS = Platform.OS === "ios";
-
-  const handleMomentumEnd = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const offsetX = event?.nativeEvent?.contentOffset?.x || 0;
-      const nextIndex = Math.round(offsetX / SNAP);
-      if (nextIndex !== activeIndex) {
-        setActiveIndex(nextIndex);
-        onActiveIndexChange?.(nextIndex);
-      }
-    },
-    [SNAP, activeIndex, onActiveIndexChange]
-  );
+  const [carouselWidth, setCarouselWidth] = useState<number>(0);
+  const ITEM_SPACING = 12;
+  const CARD_WIDTH = Math.min(Math.round(carouselWidth * 0.88), 380);
+  const SIDE_PADDING = Math.max(0, (carouselWidth - CARD_WIDTH) / 2);
+  const SNAP = CARD_WIDTH + ITEM_SPACING;
 
   const items = useMemo<CarouselItem[]>(
     () => [
@@ -184,31 +169,48 @@ const DriveMetricsCarousel: React.FC<DriveMetricsCarouselProps> = ({
     [onTogglePotholeFetch, potholeFetchEnabled, potholesDiagnosed, roadState, totalMilesMapped]
   );
 
+  const handleMomentumEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const offsetX = event?.nativeEvent?.contentOffset?.x || 0;
+      const nextIndex = Math.max(0, Math.min(Math.round(offsetX / SNAP), items.length - 1));
+      if (nextIndex !== activeIndex) {
+        setActiveIndex(nextIndex);
+        onActiveIndexChange?.(nextIndex);
+      }
+    },
+    [SNAP, activeIndex, items.length, onActiveIndexChange]
+  );
+
   return (
     <View style={styles.wrapper}>
-      <FlatList
-        data={items}
-        keyExtractor={(item) => item.key}
-        renderItem={({ item }) => (
-          <View style={{ width: CARD_WIDTH, height: CARD_HEIGHT }}>{item.render()}</View>
-        )}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        snapToInterval={SNAP}
-        decelerationRate="fast"
-        disableIntervalMomentum
-        bounces={false}
-        ItemSeparatorComponent={() => <View style={{ width: GAP }} />}
-        style={{ width: "100%", alignSelf: "stretch", overflow: "visible" }}
-        contentContainerStyle={{
-          paddingHorizontal: isIOS ? 0 : SIDE_PADDING,
-        }}
-        contentInset={
-          isIOS ? { left: SIDE_PADDING, right: SIDE_PADDING } : undefined
-        }
-        contentOffset={isIOS ? { x: -SIDE_PADDING, y: 0 } : undefined}
-        onMomentumScrollEnd={handleMomentumEnd}
-      />
+      <View onLayout={(e) => setCarouselWidth(e.nativeEvent.layout.width)}>
+        {carouselWidth > 0 ? (
+          <FlatList
+            data={items}
+            keyExtractor={(item) => item.key}
+            renderItem={({ item }) => (
+              <View style={{ width: CARD_WIDTH, height: CARD_HEIGHT }}>
+                {item.render()}
+              </View>
+            )}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            bounces={false}
+            decelerationRate="normal"
+            snapToAlignment="start"
+            snapToOffsets={items.map((_, index) => index * SNAP)}
+            ItemSeparatorComponent={() => <View style={{ width: ITEM_SPACING }} />}
+            getItemLayout={(_, index) => ({
+              length: SNAP,
+              offset: SNAP * index,
+              index,
+            })}
+            style={{ width: "100%", alignSelf: "stretch", overflow: "visible" }}
+            contentContainerStyle={{ paddingHorizontal: SIDE_PADDING }}
+            onMomentumScrollEnd={handleMomentumEnd}
+          />
+        ) : null}
+      </View>
       {showPagerDots ? (
         <DriveMetricsPagerDots total={items.length} activeIndex={activeIndex} />
       ) : null}

@@ -34,7 +34,7 @@ const PotholeAdoptionCard: React.FC<PotholeAdoptionCardProps> = ({
     <View style={[styles.adoptionBox, style]} onLayout={onLayout}>
       {hasImage && imageUri ? (
         <>
-          <View style={styles.imageWrap}>
+          <View pointerEvents="none" style={styles.imageWrap}>
             <Image
               source={{ uri: imageUri }}
               style={StyleSheet.absoluteFillObject}

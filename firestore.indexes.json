@@ -1,0 +1,47 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "telemetrySegmentPasses",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "cityId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "telemetrySegmentPasses",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "cityId", "order": "ASCENDING" },
+        { "fieldPath": "tsMs", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "telemetryPotholes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "cityId", "order": "ASCENDING" },
+        { "fieldPath": "tsMs", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "telemetryPotholes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "cityId", "order": "ASCENDING" },
+        { "fieldPath": "h3", "order": "ASCENDING" },
+        { "fieldPath": "tsMs", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "segments",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "cityId", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

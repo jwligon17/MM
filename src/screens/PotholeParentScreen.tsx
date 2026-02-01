@@ -4,6 +4,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 import {
   Alert,
   ScrollView,
@@ -17,8 +18,10 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import PotholeAdoptionCard from "../components/potholeParent/PotholeAdoptionCard";
 import PotholeParentLeaderboards from "../components/potholeParent/PotholeParentLeaderboards";
 import PotholeParentInfoPanel from "../components/potholeParent/PotholeParentInfoPanel";
-import AppTopBar from "../components/navigation/AppTopBar";
+import AppScreenHeader from "../components/AppScreenHeader";
 import LockGlowBadge from "../components/potholeParent/LockGlowBadge";
+import useEdgeSwipe from "../utils/useEdgeSwipe";
+import { DRIVE_SWIPE_PRESET, navigateToDriveTab } from "../navigation/driveSwipe";
 
 type Claim = {
   photoUri: string;
@@ -38,7 +41,7 @@ const formatDateMMDDYYYY = (ms: number) => {
 };
 
 const STORAGE_KEY = "pothole_parent_claim_v1";
-
+const EDGE_WIDTH = 120;
 const DetailsBlock: React.FC<{
   claim: Claim;
   onNameChange: (text: string) => void;
@@ -91,12 +94,26 @@ const DetailsBlock: React.FC<{
 };
 
 const PotholeParentScreen: React.FC = () => {
+  const navigation = useNavigation();
+  const isFocused = useIsFocused();
+  const isSwipeEnabled = isFocused;
   const insets = useSafeAreaInsets();
-  const headerTopPad = insets.top + 6;
   const bottomPadding = (insets?.bottom || 0) + 24;
   const [claim, setClaimState] = useState<Claim | null>(null);
   const [photoCardWidth, setPhotoCardWidth] = useState<number | null>(null);
   const isClaimLocked = !!claim?.nameLocked;
+  const handleGoToDrive = useCallback(() => {
+    navigateToDriveTab(navigation);
+  }, [navigation]);
+  const { panHandlers } = useEdgeSwipe({
+    enabled: isSwipeEnabled,
+    ...DRIVE_SWIPE_PRESET,
+    edgeWidth: EDGE_WIDTH,
+    onSwipeRight: () => {
+      if (__DEV__) console.log("[PotholeParent] swipe recognized");
+      handleGoToDrive();
+    },
+  });
 
   const persistClaim = useCallback(async (next: Claim | null) => {
     try {
@@ -315,54 +332,97 @@ const PotholeParentScreen: React.FC = () => {
         style={styles.bottomVignette}
       />
 
-      <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
-        <View style={styles.header}>
-          <AppTopBar
-            topOffset={headerTopPad}
-            renderCenter={() => <Text style={styles.headerTitle}>Pothole Parent</Text>}
-            centerAlign="center"
-            style={{ width: "100%" }}
-          />
-        </View>
-
-        <ScrollView
-          style={styles.scrollArea}
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={[styles.contentWidthWrap, { marginTop: 10 }]}>
-            <PotholeAdoptionCard
-              imageUri={claim?.photoUri}
-              onPressTakePicture={handlePrimaryCta}
-              isClaimLocked={isClaimLocked}
-              onLayout={(e) => setPhotoCardWidth(e.nativeEvent.layout.width)}
-            />
-          </View>
-
-          {claim ? (
-            <View
+      <View
+        style={{ flex: 1 }}
+        onStartShouldSetResponderCapture={() => {
+          console.log("[PP] start capture");
+          return false;
+        }}
+        onMoveShouldSetResponderCapture={() => {
+          console.log("[PP] move capture");
+          return false;
+        }}
+        onResponderGrant={() => console.log("[PP] responder grant")}
+        onResponderMove={() => console.log("[PP] responder move")}
+        onResponderRelease={() => console.log("[PP] responder release")}
+      >
+        <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+          {__DEV__ ? (
+            <Text
               style={[
-                styles.detailsWidthWrap,
-                photoCardWidth ? { width: photoCardWidth } : null,
+                styles.devSwipeLabel,
+                { top: (insets?.top || 0) + 6 },
               ]}
             >
-              <DetailsBlock
-                claim={claim}
-                onNameChange={handleNameChange}
-                onToggleNameLock={handleToggleNameLock}
-              />
-            </View>
+              Swipe: {isSwipeEnabled ? "ON" : "OFF"}
+            </Text>
           ) : null}
-
-          {claim && __DEV__ ? (
-            <Pressable style={styles.devButton} onPress={handleClearClaim}>
-              <Text style={styles.devButtonText}>Clear Claim</Text>
+          {__DEV__ ? (
+            <Pressable
+              onPress={handleGoToDrive}
+              accessibilityRole="button"
+              style={[
+                styles.devGoToDriveButton,
+                { top: (insets?.top || 0) + 6 },
+              ]}
+            >
+              <Text style={styles.devGoToDriveText}>Go to Drive</Text>
             </Pressable>
           ) : null}
+          <AppScreenHeader title="Pothole Parent" />
 
-          <PotholeParentLeaderboards />
-        </ScrollView>
-      </SafeAreaView>
+          <ScrollView
+            style={styles.scrollArea}
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={[styles.contentWidthWrap, { marginTop: 10 }]}>
+              <PotholeAdoptionCard
+                imageUri={claim?.photoUri}
+                onPressTakePicture={handlePrimaryCta}
+                isClaimLocked={isClaimLocked}
+                onLayout={(e) => setPhotoCardWidth(e.nativeEvent.layout.width)}
+              />
+            </View>
+
+            {claim ? (
+              <View
+                style={[
+                  styles.detailsWidthWrap,
+                  photoCardWidth ? { width: photoCardWidth } : null,
+                ]}
+              >
+                <DetailsBlock
+                  claim={claim}
+                  onNameChange={handleNameChange}
+                  onToggleNameLock={handleToggleNameLock}
+                />
+              </View>
+            ) : null}
+
+            {claim && __DEV__ ? (
+              <Pressable style={styles.devButton} onPress={handleClearClaim}>
+                <Text style={styles.devButtonText}>Clear Claim</Text>
+              </Pressable>
+            ) : null}
+
+            <PotholeParentLeaderboards />
+          </ScrollView>
+        </SafeAreaView>
+        <View
+          collapsable={false}
+          pointerEvents="box-only"
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: EDGE_WIDTH,
+            zIndex: 9999,
+          }}
+          {...panHandlers}
+        />
+      </View>
     </LinearGradient>
   );
 };
@@ -400,20 +460,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     height: 260,
     bottom: 0,
-  },
-  header: {
-    width: "100%",
-    alignSelf: "stretch",
-    position: "relative",
-    paddingBottom: 4,
-  },
-  headerTitle: {
-    color: "#ffffff",
-    fontSize: 34,
-    fontWeight: "900",
-    lineHeight: 36,
-    letterSpacing: 0.2,
-    textAlign: "center",
   },
   infoWrap: {
     marginTop: 10,
@@ -456,6 +502,32 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.8)",
     fontWeight: "700",
     fontSize: 12,
+    letterSpacing: 0.2,
+  },
+  devSwipeLabel: {
+    position: "absolute",
+    left: 16,
+    zIndex: 2,
+    color: "rgba(255,255,255,0.75)",
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+  },
+  devGoToDriveButton: {
+    position: "absolute",
+    right: 16,
+    zIndex: 3,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.3)",
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  devGoToDriveText: {
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 12,
+    fontWeight: "700",
     letterSpacing: 0.2,
   },
   detailsWidthWrap: {

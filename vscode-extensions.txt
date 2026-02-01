@@ -1,0 +1,11 @@
+dbaeumer.vscode-eslint
+dsznajder.es7-react-js-snippets
+esbenp.prettier-vscode
+github.codespaces
+github.copilot
+github.copilot-chat
+lirobi.phone-preview
+ms-vscode.live-server
+ms-vscode.vscode-typescript-next
+msjsdiag.vscode-react-native
+openai.chatgpt

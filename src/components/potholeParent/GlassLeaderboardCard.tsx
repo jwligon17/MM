@@ -23,9 +23,9 @@ const GlassLeaderboardCard: React.FC<GlassLeaderboardCardProps> = ({ accent, chi
     <View style={[styles.glassWrap, style]}>
       <LinearGradient colors={rimGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.rim}>
         <View style={styles.inner}>
-          <View style={styles.baseFill} />
-          <BlurView tint="dark" intensity={32} style={StyleSheet.absoluteFill} />
-          <View style={styles.darkOverlay} />
+          <View pointerEvents="none" style={styles.baseFill} />
+          <BlurView pointerEvents="none" tint="dark" intensity={32} style={StyleSheet.absoluteFill} />
+          <View pointerEvents="none" style={styles.darkOverlay} />
           <LinearGradient
             pointerEvents="none"
             colors={accentGradient}

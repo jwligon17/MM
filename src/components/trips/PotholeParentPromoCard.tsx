@@ -1,5 +1,5 @@
 import React from "react";
-import { Image, Pressable, StyleSheet, View } from "react-native";
+import { ImageBackground, Pressable, StyleSheet, View } from "react-native";
 
 interface Props {
   onPress?: () => void;
@@ -7,12 +7,18 @@ interface Props {
 
 const PotholeParentPromoCard: React.FC<Props> = ({ onPress }) => {
   const [isPressed, setIsPressed] = React.useState(false);
+  const promoImg = require("../../../assets/potholeparentpromo.png");
+
+  if (__DEV__ && !promoImg) {
+    console.warn("[PotholeParentPromoCard] missing promo image source");
+  }
 
   return (
     <View style={[styles.card, isPressed && styles.cardPressed]}>
-      <Image
-        source={require("../../../assets/potholeparentpromo.png")}
+      <ImageBackground
+        source={promoImg}
         style={styles.image}
+        imageStyle={styles.imageRadius}
         resizeMode="cover"
       />
       <Pressable
@@ -39,7 +45,6 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     borderRadius: 28,
     overflow: "hidden",
-    backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "rgba(15,23,42,0.08)",
     shadowColor: "#000",
@@ -53,7 +58,10 @@ const styles = StyleSheet.create({
     opacity: 0.92,
   },
   image: {
-    ...StyleSheet.absoluteFillObject,
+    width: "100%",
+    height: "100%",
+  },
+  imageRadius: {
     borderRadius: 28,
   },
   ctaPressable: {

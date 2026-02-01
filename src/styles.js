@@ -153,7 +153,8 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 8,
-    zIndex: 2,
+    zIndex: 9999,
+    elevation: 9999,
   },
   viewModeToggleRow: {
     flexDirection: "row",
@@ -184,6 +185,8 @@ export const styles = StyleSheet.create({
   },
   fullMap: {
     ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+    elevation: 1,
   },
   impactToast: {
     alignSelf: "flex-start",
@@ -199,27 +202,6 @@ export const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 12,
     letterSpacing: 0.3,
-  },
-  potholeMarkerDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: "rgba(248,113,113,0.8)",
-    borderWidth: 2,
-    borderColor: "rgba(248,113,113,0.95)",
-  },
-  potholeCallout: {
-    backgroundColor: "rgba(15,23,42,0.22)",
-    borderRadius: 10,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: "rgba(248,113,113,0.45)",
-    maxWidth: 220,
-  },
-  potholeCalloutTitle: {
-    color: colors.slate100,
-    fontWeight: "800",
-    marginBottom: 2,
   },
   tripsDividerWrap: {
     width: "100%",
@@ -240,11 +222,6 @@ export const styles = StyleSheet.create({
     right: 0,
     height: 6,
     opacity: 0.5,
-  },
-  potholeCalloutSeverity: {
-    color: "#f87171",
-    fontWeight: "700",
-    marginTop: 4,
   },
   mapPlaceholder: {
     flex: 1,

@@ -1,6 +1,7 @@
 {
   "projects": {
-    "default": "milemend-9ed78"
+    "default": "milemend-9ed78",
+    "milemend": "milemend-9ed78"
   },
   "targets": {
     "milemend-9ed78": {
@@ -10,8 +11,12 @@
         ],
         "municipal-portal": [
           "municipal-portal-site-id"
+        ],
+        "municipal-demo": [
+          "milemend-abilene-demo"
         ]
       }
     }
-  }
+  },
+  "etags": {}
 }

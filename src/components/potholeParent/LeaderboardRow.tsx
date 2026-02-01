@@ -67,12 +67,18 @@ const LeaderboardRow: React.FC<LeaderboardRowProps> = ({
         {hidden ? (
           <View style={[styles.hiddenPillContainer, { width: pillWidth }]}>
             <LinearGradient
+              pointerEvents="none"
               colors={["rgba(255,255,255,0.1)", "rgba(255,255,255,0.04)"]}
               start={{ x: 0, y: 0.5 }}
               end={{ x: 1, y: 0.5 }}
               style={StyleSheet.absoluteFill}
             />
-            <BlurView tint="dark" intensity={14} style={StyleSheet.absoluteFillObject} />
+            <BlurView
+              pointerEvents="none"
+              tint="dark"
+              intensity={14}
+              style={StyleSheet.absoluteFillObject}
+            />
           </View>
         ) : (
           <Text

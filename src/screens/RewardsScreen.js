@@ -7,14 +7,12 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import DriveMenuDropdown from "../components/DriveMenuDropdown";
 import LocalOfferTierRow from "../components/rewardsHud/LocalOfferTierRow";
 import OfferStackDeck from "../components/rewardsHud/OfferStackDeck";
 import RewardsHudHeader from "../components/rewardsHud/RewardsHudHeader";
 import RewardsWaveBackdrop from "../components/rewardsHud/RewardsWaveBackdrop";
 import SweepstakesCarousel from "../components/rewardsHud/SweepstakesCarousel";
 import { fetchOffers } from "../api/offersApi";
-import { useAppState } from "../state/AppStateContext";
 import { colors } from "../styles";
 
 const fallbackOffers = [
@@ -32,8 +30,6 @@ export default function RewardsScreen() {
   const route = useRoute();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef(null);
-  const { isLoggedIn } = useAppState();
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [merchants, setMerchants] = useState([]);
   const [activeTier, setActiveTier] = useState("bronze");
   const unlockedTier = "bronze";
@@ -111,10 +107,6 @@ export default function RewardsScreen() {
     }, [navigation, route?.params?.scrollToTop])
   );
 
-  const handlePressMenu = () => {
-    setIsMenuOpen(true);
-  };
-
   const sweepstakesItems = displaySweepstakes;
 
   console.log(
@@ -145,7 +137,7 @@ export default function RewardsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.section}>
-          <RewardsHudHeader onPressMenu={handlePressMenu} />
+          <RewardsHudHeader />
         </View>
 
         <View style={styles.section}>
@@ -179,12 +171,6 @@ export default function RewardsScreen() {
         </View>
       </ScrollView>
 
-      <DriveMenuDropdown
-        visible={isMenuOpen}
-        onClose={() => setIsMenuOpen(false)}
-        onSelect={() => setIsMenuOpen(false)}
-        isLoggedIn={isLoggedIn}
-      />
     </LinearGradient>
   );
 }

@@ -1,20 +1,12 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { colors } from "../../styles";
+import { StyleSheet, Text, View } from "react-native";
+import MenuButton from "../MenuButton";
 
 const neonGreen = "#39ff14";
 
-const TripsHudHeader = ({ onPressMenu }) => (
+const TripsHudHeader = () => (
   <View style={styles.container}>
-    <Pressable
-      onPress={onPressMenu}
-      style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
-      accessibilityRole="button"
-      accessibilityLabel="Open menu"
-    >
-      <MaterialCommunityIcons name="menu" size={26} color="#ffffff" />
-    </Pressable>
+    <MenuButton />
 
     <View style={styles.titleWrap}>
       <Text style={styles.title}>Trips</Text>
@@ -37,19 +29,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: "rgba(255,255,255,0.06)",
     gap: 14,
-  },
-  iconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-    backgroundColor: "rgba(255,255,255,0.06)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconButtonPressed: {
-    opacity: 0.75,
   },
   titleWrap: {
     flex: 1,

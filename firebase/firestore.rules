@@ -1,60 +1,125 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isSignedIn() { return request.auth != null; }
+
     function isAdmin() {
-      return request.auth != null &&
-        exists(/databases/$(database)/documents/adminUids/$(request.auth.uid));
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        request.auth.token.role == "admin" ||
+        exists(/databases/$(database)/documents/adminUids/$(request.auth.uid))
+      );
     }
 
-    function isMunicipalUser() {
-      return request.auth != null && request.auth.token.municipal == true;
+    function isAdminOrAnalyst() {
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        request.auth.token.role == "admin" ||
+        request.auth.token.role == "analyst" ||
+        exists(/databases/$(database)/documents/adminUids/$(request.auth.uid))
+      );
     }
 
-    // Prefer custom claims to avoid extra document reads when evaluating rules.
+    // Privacy model:
+    // - Municipal users only see published aggregates for their city.
+    // - Raw telemetry collections are restricted to admin/analyst only.
+    function municipalProfile() {
+      return get(/databases/$(database)/documents/municipalUsers/$(request.auth.uid)).data;
+    }
+
+    function hasMunicipalAccess(cityId) {
+      return isSignedIn()
+        && municipalProfile() != null
+        && municipalProfile().active == true
+        && municipalProfile().cityId == cityId;
+    }
+
     function canReadMunicipalCity(cityId) {
-      return request.auth != null &&
-        request.auth.token.municipalActive == true &&
-        request.auth.token.cityId == cityId;
+      return hasMunicipalAccess(cityId);
+    }
+
+    function isPublishedAggregate() {
+      return resource.data.published == true;
+    }
+
+    function isPublishedAggregateQuery() {
+      return request.query != null && request.query.where("published", "==", true);
+    }
+
+    // User can read their own access profile (dashboard needs this)
+    match /municipalUsers/{uid} {
+      allow get: if isSignedIn() && request.auth.uid == uid;
+      allow list: if false;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Aggregates: municipal users can read ONLY their city
+    match /citySegmentAggregates/{cityId}/segments/{segmentKey} {
+      allow get: if isAdminOrAnalyst()
+        || (hasMunicipalAccess(cityId) && isPublishedAggregate());
+      allow list: if isAdminOrAnalyst()
+        || (hasMunicipalAccess(cityId) && isPublishedAggregateQuery());
+      allow create, update, delete: if false; // server only
+    }
+
+    match /segmentAggregates/{cityId}/segments/{segmentId} {
+      allow read: if isAdminOrAnalyst() || canReadMunicipalCity(cityId);
+      allow create, update, delete: if false;
+    }
+
+    // Raw telemetry: admin/analyst only
+    match /telemetrySegmentPasses/{docId} {
+      allow write: if true; // ingestion
+      allow read: if isAdmin();
+    }
+
+    match /RoadTelemetry/{docId} {
+      allow read: if isAdminOrAnalyst();
+      allow write: if false;
+    }
+
+    match /cities/{cityId}/RoadTelemetry/{docId} {
+      allow read: if isAdminOrAnalyst();
+      allow write: if false;
+    }
+
+    function resourceCityId() {
+      return resource.data.cityId != null
+        ? resource.data.cityId
+        : (resource.data.city_id != null
+          ? resource.data.city_id
+          : (resource.data.cityKey != null
+            ? resource.data.cityKey
+            : resource.data.municipalityId));
     }
 
     function currentMeta() {
       return get(/databases/$(database)/documents/garageMeta/current);
     }
 
-    // Development access helper:
-    // grant read in non-prod when the user has a debug claim (dev=true) or is signed in with emulator creds.
-    function isDevUser() {
-      return request.auth != null &&
-        (request.auth.token.dev == true ||
-         request.auth.token.debug == true ||
-         request.auth.token.firebase.sign_in_provider == "password");
-    }
-
     match /usernames/{uname} {
-      // Availability checks
+      // Allow checking a single username document (availability check)
       allow get: if true;
+
+      // Prevent enumerating all usernames
       allow list: if false;
 
-      // Claim username once (unique by doc id)
+      // Only the signed-in user can claim a username doc that matches the doc id
       allow create: if request.auth != null
-                && request.resource.data.uid == request.auth.uid
-                && request.resource.data.usernameLower == uname
-                && !exists(/databases/$(database)/documents/usernames/$(uname));
+        && request.auth.uid == request.resource.data.uid
+        && request.resource.data.usernameLower == uname
+        && !exists(/databases/$(database)/documents/usernames/$(uname));
 
-      // Optional: allow owner to update their own username doc (idempotent)
+      // Allow user to update only their own username doc
       allow update: if request.auth != null && resource.data.uid == request.auth.uid;
 
+      // Disallow deletes (prevent release)
       allow delete: if false;
     }
 
     match /users/{uid} {
-      // Allow the signed-in user to write their own profile doc
-      allow get: if request.auth != null && request.auth.uid == uid;
+      allow read: if true;
       allow create, update: if request.auth != null && request.auth.uid == uid;
-
-      // prevent dumping all users
-      allow list: if false;
-
       allow delete: if false;
     }
 
@@ -64,15 +129,6 @@ service cloud.firestore {
 
       // keep writes locked down (v1: console-only)
       allow write: if false;
-    }
-
-    match /municipalUsers/{uid} {
-      // allow a user to read ONLY their own municipal access doc (for legacy tooling)
-      allow read: if request.auth != null && request.auth.uid == uid;
-
-      // keep writes admin-only (or console-only)
-      allow write: if request.auth != null
-        && exists(/databases/$(database)/documents/adminUids/$(request.auth.uid));
     }
 
     match /garageMeta/{docId} {
@@ -125,42 +181,41 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    match /segmentNormalizedDaily/{cityId}/{date} {
-      match /h3/{h3} {
-        allow read: if true;
-      }
-    }
-
-    // Raw segment telemetry
-    match /telemetrySegmentPasses/{segmentId} {
-      // Allow any signed-in user to read, plus municipal/admin (legacy portals)
-      allow read: if request.auth != null ||
-        isAdmin() ||
-        (isMunicipalUser() &&
-          resource.data.cityId != null &&
-          canReadMunicipalCity(resource.data.cityId));
-
-      // Mobile uploaders write segment telemetry
-      allow write: if true;
-    }
-
     match /telemetryPotholes/{potholeId} {
-      allow read: if isAdmin() ||
-        (isMunicipalUser() &&
-          resource.data.cityId != null &&
-          canReadMunicipalCity(resource.data.cityId));
+      allow read: if isAdmin() || hasMunicipalAccess(resourceCityId());
       allow write: if true;
     }
 
-    match /potholeHotspotsDaily/{cityId}/{date} {
-      match /points/{id} {
-        allow read: if true;
+    match /segmentNormalizedDaily/{cityId}/days/{date}/h3/{h3} {
+      allow read: if isAdmin() || canReadMunicipalCity(cityId);
+      allow write: if false;
+    }
+
+    match /potholeHotspotsDaily/{cityId}/days/{date}/points/{id} {
+      allow read: if isAdmin() || canReadMunicipalCity(cityId);
+      allow write: if false;
+    }
+
+    match /municipalDaily/{cityId}/days/{date} {
+      allow read: if isAdmin() || canReadMunicipalCity(cityId);
+      allow write: if false;
+    }
+
+    match /municipalDaily/{cityId} {
+      allow read: if canReadMunicipalCity(cityId);
+      allow write: if false;
+
+      match /segments/{h3} {
+        allow read: if canReadMunicipalCity(cityId);
+        allow write: if false;
+      }
+
+      match /meta/{docId} {
+        allow read: if canReadMunicipalCity(cityId);
+        allow write: if false;
       }
     }
 
-    match /municipalDaily/{cityId}/{date} {
-      allow read: if true;
-    }
     match /contentPages/{slug} {
       allow read: if true;
     }
@@ -172,40 +227,10 @@ service cloud.firestore {
     match /supportInfo/{id} {
       allow read: if true;
     }
-    match /contentPages/{slug} { 
-      allow read: if true; 
-    }
-    match /faqs/{id} { 
-      allow read: if true; 
-    }
-    match /supportInfo/{id} { 
-      allow read: if true; 
-    }
 
-    // Username claims and user profile
-    match /usernames/{uname} {
-      // Allow checking a single username document (availability check)
-      allow get: if true;
-
-      // Prevent enumerating all usernames
-      allow list: if false;
-
-      // Only the signed-in user can claim a username doc that matches the doc id
-      allow create: if request.auth != null
-        && request.auth.uid == request.resource.data.uid
-        && request.resource.data.usernameLower == uname
-        && !exists(/databases/$(database)/documents/usernames/$(uname));
-
-      // Allow user to update only their own username doc
-      allow update: if request.auth != null && resource.data.uid == request.auth.uid;
-
-      // Disallow deletes (prevent release)
-      allow delete: if false;
-    }
-
-    match /users/{uid} {
-      allow read: if true;
-      allow create, update: if request.auth != null && request.auth.uid == uid;
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

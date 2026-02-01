@@ -1,7 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Image,
   Linking,
   Modal,
@@ -19,7 +26,11 @@ import MapView, {
 } from "react-native-maps";
 import * as Location from "expo-location";
 import * as Haptics from "expo-haptics";
-import { useIsFocused, useNavigation } from "@react-navigation/native";
+import {
+  useIsFocused,
+  useNavigation,
+  useRoute,
+} from "@react-navigation/native";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,15 +38,25 @@ import { useAppState } from "../state/AppStateContext";
 import { colors, styles } from "../styles";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { collection, getDocs, getFirestore, limit, query, where } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  getFirestore,
+  limit,
+  query,
+  where,
+} from "firebase/firestore";
 import { gridDisk, latLngToCell } from "h3-js";
 import DriveMenuDropdown from "../components/DriveMenuDropdown";
 import bountySegments from "../data/bountySegments";
-import { potholeFindings } from "../data/profileMock";
-import { calculateTotalDistanceKm, distanceBetweenCoordsKm } from "../utils/distance";
+import {
+  calculateTotalDistanceKm,
+  distanceBetweenCoordsKm,
+} from "../utils/distance";
 import ImpactControlsDrawer from "../components/ImpactControlsDrawer";
 import useRoadHealthEKGSignal from "../components/RoadHealthEKG/useRoadHealthEKGSignal";
 import DrivePillCarousel from "../components/drive/DrivePillCarousel";
+import WaveformStrip from "../components/RoadHealthEKG/WaveformStrip";
 import ContentModalShell from "../components/ContentModalShell";
 import EducationDeckModal from "./Education/EducationDeckModal";
 import fetchContentPage from "../api/contentApi";
@@ -47,6 +68,7 @@ import { startIriUploader } from "../iri/uploader";
 import { getFirebaseApp } from "../services/firebaseClient";
 import { enqueueAndUpload as enqueuePortalReport } from "../services/municipalPortalReporter";
 import AppTopBar from "../components/navigation/AppTopBar";
+import useEkgStatus from "../components/RoadHealthEKG/useEkgStatus";
 
 const darkMapStyle = [
   { elementType: "geometry", stylers: [{ color: "#0b0b0f" }] },
@@ -105,7 +127,49 @@ const DRIVE_START_SPEED_MPH = 10;
 const DRIVE_START_DURATION_MS = 60_000;
 const DRIVE_END_SPEED_MPH = 3;
 const DRIVE_END_DURATION_MS = 3 * 60_000;
+const EKG_STRIP_HEIGHT = 90;
+const EKG_PILL_GAP = 24;
 const EKG_PROFILE = __DEV__ ? "onboarding" : "onboarding"; // change to "drive" in dev to compare profiles
+const HANDLING_LABEL_LINE_HEIGHT = 18;
+const HANDLING_LABEL_NUDGE_PX = 2;
+const HANDLING_LABEL_NUDGE_UP_PX = 8; // tweak: 4–12, bigger = higher
+
+const isMockTaggedPothole = (pothole) => {
+  if (!pothole) return false;
+  if (
+    pothole.isMock ||
+    pothole.isDemo ||
+    pothole.isTest ||
+    pothole.isTestCoordinate ||
+    pothole.testCoordinate ||
+    pothole.isTestLocation ||
+    pothole.mock ||
+    pothole.demo ||
+    pothole.test
+  ) {
+    return true;
+  }
+  const source = String(
+    pothole.source || pothole.__source || pothole.origin || "",
+  ).toLowerCase();
+  const tags = Array.isArray(pothole.tags)
+    ? pothole.tags.join(" ").toLowerCase()
+    : "";
+  const id = String(pothole.id || "").toLowerCase();
+  const severity = String(pothole.severity || "").toLowerCase();
+  return (
+    source.includes("mock") ||
+    source.includes("demo") ||
+    source.includes("test") ||
+    tags.includes("mock") ||
+    tags.includes("demo") ||
+    tags.includes("test") ||
+    id.includes("mock") ||
+    id.includes("demo") ||
+    id.includes("test") ||
+    severity === "debug"
+  );
+};
 
 const overlayStyles = StyleSheet.create({
   vignetteContainer: {
@@ -115,6 +179,41 @@ const overlayStyles = StyleSheet.create({
   menuButtonOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 100,
+  },
+  bottomHudStack: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    height: EKG_STRIP_HEIGHT,
+    alignItems: "stretch",
+    zIndex: 20,
+  },
+  hudOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 12,
+  },
+  pillCarouselContainer: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 8,
+  },
+  handlingDetectedLabel: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    textAlign: "center",
+    fontSize: 14,
+    lineHeight: HANDLING_LABEL_LINE_HEIGHT,
+    includeFontPadding: false,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+    color: "rgba(245,158,11,0.95)", // orange/amber
+    textShadowColor: "rgba(0,0,0,0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+    zIndex: 25,
   },
   topOverlay: {
     paddingHorizontal: 0,
@@ -127,29 +226,6 @@ const overlayStyles = StyleSheet.create({
     width: 140,
     height: 44,
     zIndex: 4,
-  },
-  devToolsButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.92)",
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  devToolsIcon: {
-    marginRight: 6,
-  },
-  devToolsText: {
-    color: "#0b0b0b",
-    fontWeight: "800",
-    fontSize: 12,
-  },
-  heartbeatStatusWrapper: {
-    position: "absolute",
-    flexDirection: "column",
-    alignItems: "flex-start",
-    paddingHorizontal: 0,
-    zIndex: 8,
   },
   topVignette: {
     position: "absolute",
@@ -488,6 +564,13 @@ export default function DriveScreen() {
   const [nearbyPotholes, setNearbyPotholes] = useState([]);
   const isMountedRef = useRef(true);
   const locationSubscriptionRef = useRef(null);
+  const isLocationTrackingRef = useRef(false);
+  const locationStatsRef = useRef({
+    count: 0,
+    start: Date.now(),
+    hz: 0,
+    lastLogAt: 0,
+  });
   const mapRef = useRef(null);
   const lastPotholeFetchCenterRef = useRef(null);
   const lastPotholeFetchCellRef = useRef(null);
@@ -495,6 +578,7 @@ export default function DriveScreen() {
   const isFetchingPotholesRef = useRef(false);
   const impactToastTimeoutRef = useRef(null);
   const navigation = useNavigation();
+  const route = useRoute();
   const isScreenFocused = useIsFocused();
   const {
     points,
@@ -526,24 +610,29 @@ export default function DriveScreen() {
   const lowSpeedSinceRef = useRef(null);
   const isDrivingRef = useRef(isDriving);
   const ekgLogRef = useRef(0);
+  const ekgDebugLogRef = useRef(0);
+  const lastRoadStateAtRef = useRef(Date.now());
   const devToolsEnabled = __DEV__;
   const activeViewMode = "MyRoads";
-  const isTrackingMode = activeViewMode === "MyRoads" || activeViewMode === "BountyRoads";
+  const isTrackingMode =
+    activeViewMode === "MyRoads" || activeViewMode === "BountyRoads";
   const insets = useSafeAreaInsets();
   const headerTopPad = insets.top + 6;
   const safeTopInset = Number.isFinite(insets?.top) ? insets.top : 0;
   const safeBottomInset = Number.isFinite(insets?.bottom) ? insets.bottom : 0;
   const tabBarHeight = useBottomTabBarHeight?.() || 0;
-  const bottomOffset = tabBarHeight + 10;
-  const dockBottom = 0;
-  const HUD = {
-    TOP: safeTopInset + 10,
-    SIDE: 16,
-    EKG_BOTTOM: dockBottom,
-    EKG_SIDE: 10,
-  };
+  const BOTTOM_HUD_MARGIN = 4; // tweak: 0–8 (smaller = closer to nav)
+  const bottomHudOffset =
+    (tabBarHeight > 0 ? tabBarHeight : safeBottomInset) + BOTTOM_HUD_MARGIN;
   const [showWordmarkFallback, setShowWordmarkFallback] = useState(false);
-  const wordmarkSource = useMemo(() => require("../../assets/MM Wordmark.png"), []);
+  const [pillLayout, setPillLayout] = useState(null);
+  const pillBottomOffset = bottomHudOffset;
+  const ekgBottomOffset =
+    bottomHudOffset + (pillLayout?.height || 0) + EKG_PILL_GAP;
+  const wordmarkSource = useMemo(
+    () => require("../../assets/MM Wordmark.png"),
+    [],
+  );
   const resolvedWordmark = Image.resolveAssetSource(wordmarkSource);
   const wordmarkAspectRatio =
     resolvedWordmark?.width && resolvedWordmark?.height
@@ -557,12 +646,16 @@ export default function DriveScreen() {
   const handleTogglePotholeFetch = useCallback(() => {
     setPotholeFetchEnabled((prev) => {
       const next = !prev;
-      AsyncStorage.setItem(POTHOLE_FETCH_STORAGE_KEY, JSON.stringify(next)).catch((error) =>
-        console.warn("Failed to persist pothole fetch toggle", error)
+      AsyncStorage.setItem(
+        POTHOLE_FETCH_STORAGE_KEY,
+        JSON.stringify(next),
+      ).catch((error) =>
+        console.warn("Failed to persist pothole fetch toggle", error),
       );
       return next;
     });
   }, []);
+
   const potholesDiagnosedCount = useMemo(() => {
     if (!Array.isArray(potholeEvents)) return 0;
     const startMs = Date.parse(driveStartTime);
@@ -579,6 +672,7 @@ export default function DriveScreen() {
     if (!Array.isArray(nearbyPotholes)) return [];
     const seen = new Set();
     return nearbyPotholes.filter((pothole) => {
+      if (!__DEV__ && isMockTaggedPothole(pothole)) return false;
       const id = pothole?.id;
       const key =
         (id && `id:${id}`) ||
@@ -595,8 +689,10 @@ export default function DriveScreen() {
   const totalMiles = useMemo(() => {
     const totalMeters = Array.isArray(tripHistory)
       ? tripHistory.reduce(
-          (sum, trip) => sum + (Number.isFinite(trip?.distanceMeters) ? trip.distanceMeters : 0),
-          0
+          (sum, trip) =>
+            sum +
+            (Number.isFinite(trip?.distanceMeters) ? trip.distanceMeters : 0),
+          0,
         )
       : 0;
     const miles = metersToMiles(totalMeters);
@@ -610,7 +706,9 @@ export default function DriveScreen() {
         ? "GPS lock active — Ghost Mode enabled (not logging)"
         : "GPS lock active — logging your miles"
       : "Waiting for GPS permission";
-  const activeContentState = activeDriveModal ? contentPages[activeDriveModal] : null;
+  const activeContentState = activeDriveModal
+    ? contentPages[activeDriveModal]
+    : null;
   const activeModalContent = activeContentState?.data || null;
   const activeModalStatus = activeContentState?.status || "idle";
   const activeModalRefreshing = !!activeContentState?.isRefreshing;
@@ -618,29 +716,65 @@ export default function DriveScreen() {
     activeContentState?.source || activeModalContent?.__source || null;
   const activeModalLastFetchError = activeContentState?.lastFetchError || null;
   const isModalOffline = activeModalSource === "cache";
-  const canRefreshModal = activeDriveModal === "faqs" || activeDriveModal === "support";
+  const canRefreshModal =
+    activeDriveModal === "faqs" || activeDriveModal === "support";
   const cityId = CITY_ID_DEFAULT;
 
+  const uploadTelemetry = useCallback(async (potholeEvent) => {
+    if (ghostModeRef.current) {
+      if (__DEV__) {
+        console.log("[ImpactScreen] ghost mode: upload skipped", {
+          id: potholeEvent?.id,
+        });
+      }
+      return;
+    }
+
+    try {
+      await enqueueTelemetryBatch({
+        id: `pothole-${potholeEvent.id}`,
+        createdAtMs: potholeEvent.timestampMs,
+        cityId: CITY_ID_DEFAULT,
+        segmentPasses: [],
+        potholes: [potholeEvent],
+      });
+      startIriUploader();
+      console.log("[ImpactScreen] pothole enqueued", { id: potholeEvent.id });
+    } catch (error) {
+      console.warn("[ImpactScreen] pothole enqueue failed", error);
+    }
+
+    enqueuePortalReport(potholeEvent).catch((error) =>
+      console.warn("[ImpactScreen] municipal portal enqueue failed", error),
+    );
+  }, []);
+
   const handlePotholeDetection = useCallback(
-    async ({ peakReading = 0, timestampMs = Date.now(), source = "sensor" } = {}) => {
+    async ({
+      peakReading = 0,
+      timestampMs = Date.now(),
+      source = "sensor",
+    } = {}) => {
       const coord = latestCoordRef.current;
       const lat = Number.isFinite(coord?.latitude)
         ? coord.latitude
         : Number.isFinite(coord?.lat)
-        ? coord.lat
-        : null;
+          ? coord.lat
+          : null;
       const lng = Number.isFinite(coord?.longitude)
         ? coord.longitude
         : Number.isFinite(coord?.lng)
-        ? coord.lng
-        : null;
+          ? coord.lng
+          : null;
       const speed = Number.isFinite(speedMps) ? speedMps : null;
       const h3 =
         lat !== null && lng !== null
           ? latLngToCell(lat, lng, DEFAULT_H3_RESOLUTION)
           : null;
       const eventId = `pothole-${timestampMs}-${Math.random().toString(36).slice(2, 8)}`;
-      const severityValue = Number.isFinite(peakReading) ? Math.min(1, Math.max(0, peakReading / 2)) : 0;
+      const severityValue = Number.isFinite(peakReading)
+        ? Math.min(1, Math.max(0, peakReading / 2))
+        : 0;
       const potholeEvent = {
         id: eventId,
         tsMs: timestampMs,
@@ -677,27 +811,17 @@ export default function DriveScreen() {
         speedMps: speed,
       });
 
-      try {
-        await enqueueTelemetryBatch({
-          id: `pothole-${eventId}`,
-          createdAtMs: timestampMs,
-          cityId: CITY_ID_DEFAULT,
-          segmentPasses: [],
-          potholes: [potholeEvent],
-        });
-        startIriUploader();
-        console.log("[ImpactScreen] pothole enqueued", { id: potholeEvent.id });
-      } catch (error) {
-        console.warn("[ImpactScreen] pothole enqueue failed", error);
-      }
-
-      enqueuePortalReport(potholeEvent).catch((error) =>
-        console.warn("[ImpactScreen] municipal portal enqueue failed", error)
-      );
+      await uploadTelemetry(potholeEvent);
 
       return potholeEvent;
     },
-    [addImpactEvent, addPotholeEvent, speedMps, updatePotholeEventSendStatus]
+    [
+      addImpactEvent,
+      addPotholeEvent,
+      speedMps,
+      updatePotholeEventSendStatus,
+      uploadTelemetry,
+    ],
   );
 
   const handlePotholeDetected = useCallback(
@@ -716,13 +840,14 @@ export default function DriveScreen() {
         }
       }, 800);
     },
-    [handlePotholeDetection]
+    [handlePotholeDetection],
   );
 
   const {
     samples: roadHealthSamples,
     roadState,
     rotationAverage,
+    debug: ekgDebug,
     start: startRoadHealthSignal,
     stop: stopRoadHealthSignal,
     triggerPothole,
@@ -739,10 +864,65 @@ export default function DriveScreen() {
     roadState === "pothole"
       ? "impact"
       : roadState === "rough"
-      ? "rough"
-      : "good";
+        ? "rough"
+        : "good";
+  const formatDebugNumber = (value, digits = 3) =>
+    Number.isFinite(value) ? value.toFixed(digits) : "n/a";
+  const [ekgNowMs, setEkgNowMs] = useState(Date.now());
+  const nowMs = Date.now();
+  const lastPotholeAt = ekgDebug?.lastPotholeAt;
+  const lastSampleAt = ekgDebug?.lastSampleTimestamp;
+  const lastEventAgeMs = Number.isFinite(lastPotholeAt)
+    ? Math.max(0, nowMs - lastPotholeAt)
+    : null;
+  const lastSampleAgeMs = Number.isFinite(lastSampleAt)
+    ? Math.max(0, nowMs - lastSampleAt)
+    : null;
+  const potholeHit = roadState === "pothole";
+  const ekgEvent = useMemo(() => {
+    if (roadState === "pothole") {
+      return {
+        eventType: "pothole",
+        eventAt: ekgDebug?.lastPotholeAt ?? lastRoadStateAtRef.current,
+      };
+    }
+    if (roadState === "rough") {
+      return { eventType: "rough", eventAt: lastRoadStateAtRef.current };
+    }
+    return { eventType: "smooth", eventAt: lastRoadStateAtRef.current };
+  }, [ekgDebug?.lastPotholeAt, roadState]);
+  const { status: ekgStatus } = useEkgStatus(ekgEvent);
+  useEffect(() => {
+    const id = setInterval(() => {
+      setEkgNowMs(Date.now());
+    }, 80);
+    return () => clearInterval(id);
+  }, []);
 
-  const shouldRunRoadEKG = isScreenFocused;
+  const ekgRoughnessScore = useMemo(() => {
+    const samples = roadHealthSamples ?? [];
+    if (!samples.length) return 0;
+    const ROUGH_WINDOW_SAMPLES = 32;
+    const ROUGH_MEAN_THRESHOLD = 0.08;
+    const ROUGH_VARIANCE_THRESHOLD = 0.02;
+    const ROUGH_VARIANCE_WEIGHT = ROUGH_MEAN_THRESHOLD / ROUGH_VARIANCE_THRESHOLD;
+    const recent = samples.slice(-ROUGH_WINDOW_SAMPLES);
+    if (!recent.length) return 0;
+    const mean = recent.reduce((sum, v) => sum + v, 0) / recent.length;
+    const variance =
+      recent.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / recent.length;
+    return Math.max(mean, variance * ROUGH_VARIANCE_WEIGHT);
+  }, [roadHealthSamples]);
+
+  const ekgStrokeColor = useMemo(() => {
+    const potholeActive =
+      Number.isFinite(lastPotholeAt) && ekgNowMs - lastPotholeAt < 650;
+    if (potholeActive) return "rgba(239,68,68,0.95)";
+    if (ekgRoughnessScore >= 0.08) return "rgba(245,158,11,0.95)";
+    return "rgba(34,197,94,0.95)";
+  }, [ekgNowMs, ekgRoughnessScore, lastPotholeAt]);
+
+  const shouldRunRoadEKG = isScreenFocused || isDriving;
 
   useEffect(() => {
     if (!__DEV__ || !roadHealthSamples?.length) return;
@@ -756,17 +936,50 @@ export default function DriveScreen() {
       return Math.max(max, Math.abs(numeric));
     }, 0);
 
-    console.log("[EKG] roadHealth maxAbs", { maxAbs, len: roadHealthSamples.length });
+    console.log("[EKG] roadHealth maxAbs", {
+      maxAbs,
+      len: roadHealthSamples.length,
+    });
   }, [roadHealthSamples]);
 
   useEffect(() => {
+    if (!__DEV__) return;
+    const now = Date.now();
+    if (now - ekgDebugLogRef.current < 1000) return;
+    ekgDebugLogRef.current = now;
+    console.log("[EKG] debug", {
+      roadState,
+      ekgStatus,
+      potholeHit,
+      roughnessMean: ekgDebug?.roughnessMean,
+      roughnessVariance: ekgDebug?.roughnessVariance,
+      lastClamped: ekgDebug?.lastClamped,
+      spikeThreshold: ekgDebug?.spikeThreshold,
+      lastPotholeSeverity: ekgDebug?.lastPotholeSeverity,
+      lastPotholePeak: ekgDebug?.lastPotholePeak,
+      lastEventAt: ekgDebug?.lastPotholeAt,
+      lastSampleAt: ekgDebug?.lastSampleTimestamp,
+      speedMps: ekgDebug?.speedMps,
+    });
+  }, [ekgDebug, ekgStatus, potholeHit, roadState]);
+
+  useEffect(() => {
+    lastRoadStateAtRef.current = Date.now();
+  }, [roadState]);
+
+  useEffect(() => {
     if (!shouldRunRoadEKG) {
-      stopRoadHealthSignal();
+      stopRoadHealthSignal(isDriving ? "drive-ended" : "screen-blur");
       return;
     }
-    startRoadHealthSignal();
-    return () => stopRoadHealthSignal();
-  }, [shouldRunRoadEKG, startRoadHealthSignal, stopRoadHealthSignal]);
+    startRoadHealthSignal(isDriving ? "drive-session" : "screen-focus");
+    return () => stopRoadHealthSignal("effect-cleanup");
+  }, [
+    isDriving,
+    shouldRunRoadEKG,
+    startRoadHealthSignal,
+    stopRoadHealthSignal,
+  ]);
 
   const handleDrivingStateMachine = useCallback(
     (coord, speedMph) => {
@@ -821,19 +1034,23 @@ export default function DriveScreen() {
         highSpeedSinceRef.current = null;
       }
     },
-    [finishDrivingSession, recordDrivingCoordinate, startDrivingSession]
+    [finishDrivingSession, recordDrivingCoordinate, startDrivingSession],
   );
 
   useEffect(() => {
-    startLocationTracking();
+    startLocationTracking("mount");
     return () => {
       isMountedRef.current = false;
-      locationSubscriptionRef.current?.remove();
+      stopLocationTracking("unmount");
       if (impactToastTimeoutRef.current) {
         clearTimeout(impactToastTimeoutRef.current);
       }
     };
   }, []);
+  useEffect(() => {
+    if (!isScreenFocused && !isDriving) return;
+    startLocationTracking(isDriving ? "drive-session" : "screen-focus");
+  }, [isDriving, isScreenFocused]);
   useEffect(() => {
     if (!potholeFetchEnabled) {
       setNearbyPotholes([]);
@@ -849,11 +1066,18 @@ export default function DriveScreen() {
       if (!isDrivingRef.current) return;
 
       const coord = latestCoordRef.current;
-      if (!Number.isFinite(coord?.latitude) || !Number.isFinite(coord?.longitude)) {
+      if (
+        !Number.isFinite(coord?.latitude) ||
+        !Number.isFinite(coord?.longitude)
+      ) {
         return;
       }
 
-      const h3 = latLngToCell(coord.latitude, coord.longitude, DEFAULT_H3_RESOLUTION);
+      const h3 = latLngToCell(
+        coord.latitude,
+        coord.longitude,
+        DEFAULT_H3_RESOLUTION,
+      );
       const now = Date.now();
       const sameCell = h3 === lastPotholeFetchCellRef.current;
       const withinCooldown = now - lastPotholeFetchAtRef.current < 12000;
@@ -888,6 +1112,13 @@ export default function DriveScreen() {
             h3: data.h3,
             cityId: data.cityId,
             createdAt: data.createdAt,
+            source: data.source,
+            __source: data.__source,
+            origin: data.origin,
+            tags: data.tags,
+            isMock: data.isMock,
+            isDemo: data.isDemo,
+            isTest: data.isTest,
           };
         });
         setNearbyPotholes(results);
@@ -918,7 +1149,9 @@ export default function DriveScreen() {
           setPotholeFetchEnabled(stored === "true");
         }
       })
-      .catch((error) => console.warn("Failed to load pothole fetch toggle", error));
+      .catch((error) =>
+        console.warn("Failed to load pothole fetch toggle", error),
+      );
     return () => {
       isActive = false;
     };
@@ -1003,8 +1236,21 @@ export default function DriveScreen() {
     console.log("roadState", roadState);
   }, [roadState]);
 
-  async function startLocationTracking() {
+  async function startLocationTracking(reason = "unknown") {
     if (isRequestingLocation) return;
+    if (isLocationTrackingRef.current) {
+      if (__DEV__) {
+        console.log("[Location] start skipped (already tracking)", { reason });
+      }
+      return;
+    }
+    if (__DEV__) {
+      console.log("[Location] start listeners", {
+        reason,
+        timeInterval: 3000,
+        distanceInterval: 5,
+      });
+    }
 
     setIsRequestingLocation(true);
     setLocationError(null);
@@ -1013,6 +1259,9 @@ export default function DriveScreen() {
     setLocationPermission(status);
 
     if (status !== "granted") {
+      if (__DEV__) {
+        console.log("[Location] permission denied", { reason });
+      }
       setLocationError("Location permission is required to track your drive.");
       setIsRequestingLocation(false);
       return;
@@ -1048,6 +1297,7 @@ export default function DriveScreen() {
         distanceInterval: 5,
       },
       (update) => {
+        const now = Date.now();
         const coord = {
           latitude: update.coords.latitude,
           longitude: update.coords.longitude,
@@ -1063,6 +1313,23 @@ export default function DriveScreen() {
           ...(prev || regionFromCoords(update.coords)),
           ...coord,
         }));
+
+        locationStatsRef.current.count += 1;
+        const elapsedMs = now - locationStatsRef.current.start;
+        if (elapsedMs >= 1000) {
+          locationStatsRef.current.hz =
+            (locationStatsRef.current.count * 1000) / Math.max(1, elapsedMs);
+          locationStatsRef.current.count = 0;
+          locationStatsRef.current.start = now;
+          if (__DEV__ && now - locationStatsRef.current.lastLogAt >= 1000) {
+            console.log("[Location] updateHz", {
+              hz: Math.round(locationStatsRef.current.hz * 10) / 10,
+              timeInterval: 3000,
+              distanceInterval: 5,
+            });
+            locationStatsRef.current.lastLogAt = now;
+          }
+        }
 
         if (!ghostModeRef.current) {
           setPathCoords((prev) => {
@@ -1101,13 +1368,31 @@ export default function DriveScreen() {
               pitch: 0,
               zoom: 16,
             },
-            { duration: 600 }
+            { duration: 600 },
           );
         }
-      }
+      },
     );
+    isLocationTrackingRef.current = true;
+    locationStatsRef.current = {
+      count: 0,
+      start: Date.now(),
+      hz: 0,
+      lastLogAt: 0,
+    };
 
     setIsRequestingLocation(false);
+  }
+
+  function stopLocationTracking(reason = "unknown") {
+    if (locationSubscriptionRef.current?.remove) {
+      locationSubscriptionRef.current.remove();
+    }
+    locationSubscriptionRef.current = null;
+    isLocationTrackingRef.current = false;
+    if (__DEV__) {
+      console.log("[Location] stop listeners", { reason });
+    }
   }
 
   const recenterOnUser = () => {
@@ -1118,15 +1403,25 @@ export default function DriveScreen() {
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
       },
-      500
+      500,
     );
   };
 
   const bountyMission = missions?.find(
-    (mission) => mission.id === "bounty_week"
+    (mission) => mission.id === "bounty_week",
   );
   const isBountyMissionCompleted = !!bountyMission?.completed;
-  const handlingDetected = rotationAverage > ROTATION_HANDLING_THRESHOLD;
+  const isHandlingDetected = rotationAverage > ROTATION_HANDLING_THRESHOLD;
+  const handlingBottom = useMemo(() => {
+    const pillTopFromBottom = pillBottomOffset + (pillLayout?.height || 0);
+    const centerOffset = Math.max(
+      0,
+      Math.round((EKG_PILL_GAP - HANDLING_LABEL_LINE_HEIGHT) / 2),
+    );
+    const baseBottom =
+      pillTopFromBottom + centerOffset - HANDLING_LABEL_NUDGE_PX;
+    return baseBottom + HANDLING_LABEL_NUDGE_UP_PX;
+  }, [pillBottomOffset, pillLayout?.height]);
 
   const handleImpactEventSelect = useCallback((event) => {
     if (!event || !mapRef.current) return;
@@ -1139,11 +1434,12 @@ export default function DriveScreen() {
         pitch: 0,
         heading: 0,
       },
-      { duration: 700 }
+      { duration: 700 },
     );
   }, []);
 
   const handleTitleTap = () => {
+    if (!__DEV__) return;
     const now = Date.now();
     if (now - lastTitleTapRef.current > 900) {
       titleTapCountRef.current = 0;
@@ -1157,13 +1453,13 @@ export default function DriveScreen() {
     }
   };
 
-  const handleOpenDevTools = useCallback(() => {
-    navigation.navigate("DevTools");
-  }, [navigation]);
-
-  const handlePressMenu = useCallback(() => {
-    navigation.getParent()?.openDrawer?.();
-  }, [navigation]);
+  useEffect(() => {
+    const target = route.params?.openDriveModal;
+    if (!target) return;
+    setActiveDriveModal(target);
+    setIsDriveMenuOpen(false);
+    navigation.setParams({ openDriveModal: undefined });
+  }, [navigation, route.params?.openDriveModal]);
 
   const handlePressEducation = useCallback(() => {
     setShowEducationModal(true);
@@ -1171,52 +1467,55 @@ export default function DriveScreen() {
 
   const handleCloseControls = useCallback(
     () => setShowControlsDrawer(false),
-    []
+    [],
   );
-  const handleCloseEducation = useCallback(() => setShowEducationModal(false), []);
+  const handleCloseEducation = useCallback(
+    () => setShowEducationModal(false),
+    [],
+  );
   const handleCloseMenu = useCallback(() => setShowMenuDrawer(false), []);
-  const handleCloseDriveMenu = useCallback(
-    () => setIsDriveMenuOpen(false),
-    []
-  );
-  const handleDriveMenuSelect = useCallback((key) => {
-    if (key === "login") {
-      setActiveDriveModal(null);
-      setIsDriveMenuOpen(false);
-      const parentNav = navigation.getParent();
-      if (parentNav) {
-        parentNav.navigate("Profile");
-      } else {
-        navigation.navigate("Profile");
+  const handleCloseDriveMenu = useCallback(() => setIsDriveMenuOpen(false), []);
+  const handleDriveMenuSelect = useCallback(
+    (key) => {
+      if (key === "login") {
+        setActiveDriveModal(null);
+        setIsDriveMenuOpen(false);
+        const parentNav = navigation.getParent();
+        if (parentNav) {
+          parentNav.navigate("Profile");
+        } else {
+          navigation.navigate("Profile");
+        }
+        return;
       }
-      return;
-    }
 
-    if (key === "logout") {
-      Alert.alert(
-        "Log Out",
-        "Logging out will disable purchases and secure your account. Are you sure?",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Log Out",
-            style: "destructive",
-            onPress: async () => {
-              await logOut?.();
-              setActiveDriveModal(null);
-              setIsDriveMenuOpen(false);
+      if (key === "logout") {
+        Alert.alert(
+          "Log Out",
+          "Logging out will disable purchases and secure your account. Are you sure?",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Log Out",
+              style: "destructive",
+              onPress: async () => {
+                await logOut?.();
+                setActiveDriveModal(null);
+                setIsDriveMenuOpen(false);
+              },
             },
-          },
-        ]
-      );
-      return;
-    }
+          ],
+        );
+        return;
+      }
 
-    if (DRIVE_MODAL_CONTENT[key]) {
-      setActiveDriveModal(key);
-    }
-    setIsDriveMenuOpen(false);
-  }, [logOut, navigation]);
+      if (DRIVE_MODAL_CONTENT[key]) {
+        setActiveDriveModal(key);
+      }
+      setIsDriveMenuOpen(false);
+    },
+    [logOut, navigation],
+  );
   const handleCloseDriveModal = useCallback(() => {
     setActiveDriveModal(null);
     setIsDriveMenuOpen(false);
@@ -1247,7 +1546,7 @@ export default function DriveScreen() {
       }
       return content;
     },
-    [normalizeFaqItems]
+    [normalizeFaqItems],
   );
   const normalizeFetchError = useCallback((error) => {
     if (!error) return null;
@@ -1277,7 +1576,10 @@ export default function DriveScreen() {
           ...prev,
           [pageKey]: {
             ...prevPage,
-            status: hasExistingData && isRefresh ? prevPage.status || "loaded" : "loading",
+            status:
+              hasExistingData && isRefresh
+                ? prevPage.status || "loaded"
+                : "loading",
             isRefreshing: isRefresh,
             lastFetchError: null,
           },
@@ -1305,15 +1607,15 @@ export default function DriveScreen() {
           source = content ? "remote" : null;
           lastFetchSource = content ? "server" : null;
         } else if (shouldUseContentPages) {
-          const { content: pageContent, error: fetchError } = await getContentPage(
-            pageKey
-          );
+          const { content: pageContent, error: fetchError } =
+            await getContentPage(pageKey);
           content = pageContent;
           error = fetchError;
           source = content ? "remote" : null;
           lastFetchSource = content ? "server" : null;
         } else {
-          const { content: pageContent, error: fetchError } = await fetchContentPage(pageKey);
+          const { content: pageContent, error: fetchError } =
+            await fetchContentPage(pageKey);
           content = pageContent;
           error = fetchError;
           source = content?.__source || null;
@@ -1328,7 +1630,7 @@ export default function DriveScreen() {
           const prevPage = prev[pageKey];
           const fallbackPrevData = normalizeContentPayload(
             pageKey,
-            prevPage?.data || null
+            prevPage?.data || null,
           );
           const nextData = normalizedContent ?? fallbackPrevData ?? null;
           const nextStatus = nextData ? "loaded" : "error";
@@ -1347,7 +1649,10 @@ export default function DriveScreen() {
               lastFetchError:
                 normalizedError ??
                 (!nextData
-                  ? { code: "content-unavailable", message: "Unable to load content." }
+                  ? {
+                      code: "content-unavailable",
+                      message: "Unable to load content.",
+                    }
                   : null),
             },
           };
@@ -1364,13 +1669,14 @@ export default function DriveScreen() {
               ...prevPage,
               status: prevPage?.data ? prevPage.status || "loaded" : "error",
               isRefreshing: false,
-              lastFetchError: normalizedError ?? prevPage?.lastFetchError ?? null,
+              lastFetchError:
+                normalizedError ?? prevPage?.lastFetchError ?? null,
             },
           };
         });
       }
     },
-    [mapSourceToDebug, normalizeContentPayload, normalizeFetchError]
+    [mapSourceToDebug, normalizeContentPayload, normalizeFetchError],
   );
 
   const handleRefreshContent = useCallback(() => {
@@ -1382,7 +1688,7 @@ export default function DriveScreen() {
     if (!email) return;
     const mailto = `mailto:${email}`;
     Linking.openURL(mailto).catch((error) =>
-      console.warn("Failed to open support email link", error)
+      console.warn("Failed to open support email link", error),
     );
   }, []);
 
@@ -1390,7 +1696,7 @@ export default function DriveScreen() {
     if (!url) return;
     const normalized = url.startsWith("http") ? url : `https://${url}`;
     Linking.openURL(normalized).catch((error) =>
-      console.warn("Failed to open support website", error)
+      console.warn("Failed to open support website", error),
     );
   }, []);
 
@@ -1459,19 +1765,17 @@ export default function DriveScreen() {
           {block.heading ? (
             <Text style={driveModalStyles.blockHeading}>{block.heading}</Text>
           ) : null}
-          {normalizeParagraphs(block.body).map(
-            (paragraph, paragraphIndex) => (
-              <Text
-                key={`${index}-body-${paragraphIndex}`}
-                style={driveModalStyles.bodyText}
-              >
-                {paragraph}
-              </Text>
-            )
-          )}
+          {normalizeParagraphs(block.body).map((paragraph, paragraphIndex) => (
+            <Text
+              key={`${index}-body-${paragraphIndex}`}
+              style={driveModalStyles.bodyText}
+            >
+              {paragraph}
+            </Text>
+          ))}
         </View>
       )),
-    [normalizeParagraphs]
+    [normalizeParagraphs],
   );
 
   const renderModalContent = useCallback(
@@ -1490,7 +1794,7 @@ export default function DriveScreen() {
               .filter((block) => block.heading || block.body || block.imageUrl)
           : [];
       const paragraphs = normalizeParagraphs(
-        content.bodyMarkdown || content.body
+        content.bodyMarkdown || content.body,
       );
 
       if (pageKey === "about") {
@@ -1514,7 +1818,10 @@ export default function DriveScreen() {
       if (pageKey === "privacy" || pageKey === "terms") {
         if (paragraphs.length) {
           return paragraphs.map((paragraph, index) => (
-            <Text key={`${pageKey}-body-${index}`} style={driveModalStyles.bodyText}>
+            <Text
+              key={`${pageKey}-body-${index}`}
+              style={driveModalStyles.bodyText}
+            >
               {paragraph}
             </Text>
           ));
@@ -1532,7 +1839,10 @@ export default function DriveScreen() {
         return (
           <>
             {paragraphs.map((paragraph, index) => (
-              <Text key={`support-body-${index}`} style={driveModalStyles.bodyText}>
+              <Text
+                key={`support-body-${index}`}
+                style={driveModalStyles.bodyText}
+              >
                 {paragraph}
               </Text>
             ))}
@@ -1568,13 +1878,9 @@ export default function DriveScreen() {
       }
 
       if (pageKey === "faqs") {
-        const faqItems = Array.isArray(content.items)
-          ? content.items
-          : [];
+        const faqItems = Array.isArray(content.items) ? content.items : [];
         if (!faqItems.length) {
-          return (
-            <Text style={driveModalStyles.bodyText}>Connect to load</Text>
-          );
+          return <Text style={driveModalStyles.bodyText}>Connect to load</Text>;
         }
         return (
           <View style={driveModalStyles.faqList}>
@@ -1590,18 +1896,14 @@ export default function DriveScreen() {
                 >
                   <Pressable
                     onPress={() =>
-                      setExpandedFaqIndex(
-                        isExpanded ? null : index
-                      )
+                      setExpandedFaqIndex(isExpanded ? null : index)
                     }
                     style={({ pressed }) => [
                       driveModalStyles.faqQuestionRow,
                       pressed && driveModalStyles.faqQuestionRowPressed,
                     ]}
                   >
-                    <Text style={driveModalStyles.faqQuestion}>
-                      {item.q}
-                    </Text>
+                    <Text style={driveModalStyles.faqQuestion}>{item.q}</Text>
                     <MaterialCommunityIcons
                       name={isExpanded ? "chevron-up" : "chevron-down"}
                       size={22}
@@ -1610,9 +1912,7 @@ export default function DriveScreen() {
                   </Pressable>
                   {isExpanded ? (
                     <View style={driveModalStyles.faqAnswer}>
-                      <Text style={driveModalStyles.bodyText}>
-                        {item.a}
-                      </Text>
+                      <Text style={driveModalStyles.bodyText}>{item.a}</Text>
                     </View>
                   ) : null}
                 </View>
@@ -1647,7 +1947,7 @@ export default function DriveScreen() {
       expandedFaqIndex,
       normalizeParagraphs,
       renderBlockCards,
-    ]
+    ],
   );
 
   const renderActiveModalBody = useCallback(() => {
@@ -1681,10 +1981,7 @@ export default function DriveScreen() {
     }
 
     if (activeModalContent) {
-      const rendered = renderModalContent(
-        activeModalContent,
-        activeDriveModal
-      );
+      const rendered = renderModalContent(activeModalContent, activeDriveModal);
       if (rendered)
         return (
           <>
@@ -1713,12 +2010,12 @@ export default function DriveScreen() {
       activeModalRefreshing || activeModalStatus === "loading"
         ? "loading"
         : activeModalStatus === "loaded"
-        ? "success"
-        : activeModalStatus === "error"
-        ? "error"
-        : activeModalContent
-        ? "success"
-        : "error";
+          ? "success"
+          : activeModalStatus === "error"
+            ? "error"
+            : activeModalContent
+              ? "success"
+              : "error";
 
     const projectIdLabel = firebaseConfig?.projectId || "unset";
     const errorCodeLabel = activeModalLastFetchError?.code || "none";
@@ -1731,10 +2028,7 @@ export default function DriveScreen() {
         <Text style={driveModalStyles.debugFooterText}>
           lastFetchStatus: {statusLabel}
         </Text>
-        <Text
-          style={driveModalStyles.debugFooterText}
-          numberOfLines={2}
-        >
+        <Text style={driveModalStyles.debugFooterText} numberOfLines={2}>
           lastErrorCode: {errorCodeLabel}
         </Text>
       </View>
@@ -1754,12 +2048,19 @@ export default function DriveScreen() {
         style={[
           styles.headerOverlay,
           overlayStyles.topOverlay,
-          { position: "absolute", top: 0, left: 0, right: 0, zIndex: 50, paddingHorizontal: 0 },
+          {
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 9999,
+            elevation: 9999,
+            paddingHorizontal: 0,
+          },
         ]}
       >
         <AppTopBar
           topOffset={headerTopPad}
-          onPressMenu={handlePressMenu}
           renderCenter={() =>
             showWordmarkFallback ? (
               <Text
@@ -1778,36 +2079,24 @@ export default function DriveScreen() {
                 onError={() => setShowWordmarkFallback(true)}
                 style={[
                   { height: 32 },
-                  wordmarkAspectRatio ? { width: 32 * wordmarkAspectRatio } : { width: 160 },
+                  wordmarkAspectRatio
+                    ? { width: 32 * wordmarkAspectRatio }
+                    : { width: 160 },
                 ]}
                 resizeMode="contain"
               />
             )
           }
           style={{ width: "100%", alignSelf: "stretch" }}
-          renderRight={() =>
-            devToolsEnabled ? (
-              <Pressable
-                style={overlayStyles.devToolsButton}
-                onPress={handleOpenDevTools}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <MaterialCommunityIcons
-                  name="hammer-wrench"
-                  size={16}
-                  color="#0b0b0b"
-                  style={overlayStyles.devToolsIcon}
-                />
-                <Text style={overlayStyles.devToolsText}>Dev tools</Text>
-              </Pressable>
-            ) : null
-          }
+          reserveRightSlot={false}
         />
-        <Pressable
-          style={overlayStyles.devToolsHotspot}
-          hitSlop={12}
-          onPress={handleTitleTap}
-        />
+        {__DEV__ ? (
+          <Pressable
+            style={overlayStyles.devToolsHotspot}
+            hitSlop={12}
+            onPress={handleTitleTap}
+          />
+        ) : null}
         {activeViewMode === "BountyRoads" && (
           <View style={styles.legendPill}>
             <Text style={styles.legendText}>
@@ -1870,39 +2159,19 @@ export default function DriveScreen() {
               lineJoin="round"
             />
           )}
-          {dedupedNearbyPotholes.map(
-            (pothole) =>
-              Number.isFinite(pothole?.lat) && Number.isFinite(pothole?.lng) ? (
-                <Circle
-                  key={pothole.id || pothole.h3 || `${pothole.lat}-${pothole.lng}`}
-                  center={{ latitude: pothole.lat, longitude: pothole.lng }}
-                  radius={8}
-                  strokeColor="rgba(255,0,0,0.8)"
-                  fillColor="rgba(255,0,0,0.5)"
-                />
-              ) : null
+          {dedupedNearbyPotholes.map((pothole) =>
+            Number.isFinite(pothole?.lat) && Number.isFinite(pothole?.lng) ? (
+              <Circle
+                key={
+                  pothole.id || pothole.h3 || `${pothole.lat}-${pothole.lng}`
+                }
+                center={{ latitude: pothole.lat, longitude: pothole.lng }}
+                radius={8}
+                strokeColor="rgba(255,0,0,0.8)"
+                fillColor="rgba(255,0,0,0.5)"
+              />
+            ) : null,
           )}
-          {potholeFindings.map((pothole) => (
-            <Marker
-              key={pothole.id}
-              coordinate={{
-                latitude: pothole.latitude,
-                longitude: pothole.longitude,
-              }}
-              tracksViewChanges={false}
-            >
-              <View style={styles.potholeMarkerDot} />
-              <Callout tooltip>
-                <View style={styles.potholeCallout}>
-                  <Text style={styles.potholeCalloutTitle}>{pothole.id}</Text>
-                  <Text style={styles.helper}>{pothole.location}</Text>
-                  <Text style={styles.potholeCalloutSeverity}>
-                    {pothole.severity}
-                  </Text>
-                </View>
-              </Callout>
-            </Marker>
-          ))}
         </MapView>
       ) : (
         <View style={styles.mapPlaceholder}>
@@ -1940,35 +2209,53 @@ export default function DriveScreen() {
         end={{ x: 0.5, y: 1 }}
         style={overlayStyles.bottomScrim}
       />
-
-      <DrivePillCarousel
-        bottomOffset={bottomOffset}
-        potholesDiagnosed={potholesDiagnosedCount}
-        totalMilesMapped={totalMiles}
-        potholeFetchEnabled={potholeFetchEnabled}
-        ekgSamples={roadHealthSamples}
-        ekgRoadState={roadState}
-        ekgProfile={EKG_PROFILE}
-        onTogglePotholeFetch={handleTogglePotholeFetch}
-      />
-      <View
-        pointerEvents="none"
-        style={[
-          overlayStyles.heartbeatStatusWrapper,
-          {
-            left: HUD.EKG_SIDE,
-            bottom: Math.max(safeBottomInset + 24, HUD.EKG_BOTTOM - 14),
-          },
-        ]}
-      >
-        {devToolsEnabled && handlingDetected && (
-          <Text style={[styles.helper, { color: colors.cyan, marginTop: 4 }]}>
+      <View pointerEvents="box-none" style={overlayStyles.hudOverlay}>
+        <View
+          pointerEvents="none"
+          style={[overlayStyles.bottomHudStack, { bottom: ekgBottomOffset }]}
+        >
+          <View style={{ width: "100%", height: EKG_STRIP_HEIGHT }}>
+            <WaveformStrip
+              samples={roadHealthSamples ?? []}
+              roadState={roadState}
+              variant="drive"
+              profile={EKG_PROFILE}
+              pointerEvents="none"
+              strokeColor={ekgStrokeColor}
+              height={EKG_STRIP_HEIGHT}
+            />
+          </View>
+        </View>
+        <View
+          pointerEvents="box-none"
+          style={[
+            overlayStyles.pillCarouselContainer,
+            { bottom: pillBottomOffset },
+          ]}
+          onLayout={(e) => setPillLayout(e.nativeEvent.layout)}
+        >
+          <DrivePillCarousel
+            potholesDiagnosed={potholesDiagnosedCount}
+            totalMilesMapped={totalMiles}
+            potholeFetchEnabled={potholeFetchEnabled}
+            roadState={roadState}
+            onTogglePotholeFetch={handleTogglePotholeFetch}
+          />
+        </View>
+        {isHandlingDetected && handlingBottom != null ? (
+          <Text
+            pointerEvents="none"
+            style={[overlayStyles.handlingDetectedLabel, { bottom: handlingBottom }]}
+          >
             Handling detected
           </Text>
-        )}
+        ) : null}
       </View>
 
-      <EducationDeckModal visible={showEducationModal} onClose={handleCloseEducation} />
+      <EducationDeckModal
+        visible={showEducationModal}
+        onClose={handleCloseEducation}
+      />
 
       <ImpactMenuDrawer
         visible={showMenuDrawer}

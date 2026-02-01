@@ -56,37 +56,6 @@ export const roadContributions = [
   { name: "Riverside Loop", quality: "Great", miles: 4.7 },
 ];
 
-export const potholeFindings = [
-  {
-    id: "p-102",
-    location: "Market & 8th",
-    severity: "Critical",
-    latitude: 37.7763,
-    longitude: -122.4109,
-  },
-  {
-    id: "p-221",
-    location: "Spruce near 5th",
-    severity: "Moderate",
-    latitude: 37.7806,
-    longitude: -122.4476,
-  },
-  {
-    id: "p-330",
-    location: "Riverside exit",
-    severity: "Mild",
-    latitude: 37.7689,
-    longitude: -122.4248,
-  },
-  {
-    id: "p-440",
-    location: "Buffalo Gap, TX",
-    severity: "Critical",
-    latitude: 32.2743,
-    longitude: -99.8337,
-  },
-];
-
 export const profileDetails = {
   vehicle: "2020 Subaru Crosstrek",
   anchors: "Home 94103 · Work 94016",

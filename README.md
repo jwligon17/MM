@@ -35,3 +35,17 @@ Args:
 - `--limit <number>` (optional, default 1000): max docs to update in one run.
 
 The script queries `telemetrySegmentPasses` where `cityId == null`, updates each doc with the provided cityId, prints how many were updated, and logs sample doc IDs.
+
+## Firestore indexes
+
+Deploy the required composite indexes after updating `firestore.indexes.json`:
+
+```bash
+firebase deploy --only firestore:indexes
+```
+
+## Deploy functions
+
+```bash
+firebase deploy --only functions
+```

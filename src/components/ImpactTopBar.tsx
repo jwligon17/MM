@@ -2,18 +2,17 @@ import React from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../styles";
-import AppMenuButton from "./navigation/AppMenuButton";
+import MenuButton from "./MenuButton";
 
 const WORDMARK_HEIGHT = 56;
 
 type ImpactTopBarProps = {
-  onPressMenu?: () => void;
   onPressEducation?: () => void;
   onLongPressEducation?: () => void;
   hideMenuButton?: boolean;
 };
 
-const ImpactTopBar: React.FC<ImpactTopBarProps> = ({ onPressMenu, hideMenuButton = false }) => {
+const ImpactTopBar: React.FC<ImpactTopBarProps> = ({ hideMenuButton = false }) => {
   const { top } = useSafeAreaInsets();
   const safeTop = Number.isFinite(top) ? top : 0;
   const [showWordmarkFallback, setShowWordmarkFallback] = React.useState(false);
@@ -27,7 +26,7 @@ const ImpactTopBar: React.FC<ImpactTopBarProps> = ({ onPressMenu, hideMenuButton
   return (
     <View style={[styles.container, { paddingTop: safeTop + 8 }]}>
       {!hideMenuButton ? (
-        <AppMenuButton onPress={onPressMenu} style={{ left: 26, top: safeTop + 14 }} />
+        <MenuButton style={{ left: 26, top: safeTop + 14 }} />
       ) : (
         <View style={styles.menuPlaceholder} pointerEvents="none" />
       )}

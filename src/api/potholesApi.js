@@ -27,6 +27,13 @@ export const fetchNearbyPotholes = async ({
       lat: data.lat,
       lng: data.lng,
       severity: data.severity,
+      source: data.source,
+      __source: data.__source,
+      origin: data.origin,
+      tags: data.tags,
+      isMock: data.isMock,
+      isDemo: data.isDemo,
+      isTest: data.isTest,
     };
   });
 };

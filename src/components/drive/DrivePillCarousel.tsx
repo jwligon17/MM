@@ -4,47 +4,32 @@ import DriveMetricsCarousel, {
   DRIVE_METRIC_CARD_COUNT,
   DriveMetricsPagerDots,
 } from "./DriveMetricsCarousel";
-import WaveformStrip from "../RoadHealthEKG/WaveformStrip";
 
 type DrivePillCarouselProps = {
-  bottomOffset?: number;
   potholesDiagnosed: number;
   totalMilesMapped: number;
   potholeFetchEnabled: boolean;
-  ekgSamples: number[];
-  ekgRoadState?: string;
-  ekgProfile?: "onboarding" | "drive";
+  roadState?: string;
   onTogglePotholeFetch?: () => void;
 };
 
 const DrivePillCarousel: React.FC<DrivePillCarouselProps> = ({
-  bottomOffset = 0,
   potholesDiagnosed,
   totalMilesMapped,
   potholeFetchEnabled,
-  ekgSamples = [],
-  ekgRoadState = "smooth",
-  ekgProfile = "onboarding",
+  roadState = "smooth",
   onTogglePotholeFetch,
 }) => {
   const [activeMetricIndex, setActiveMetricIndex] = useState(0);
 
   return (
-    <View pointerEvents="box-none" style={[styles.container, { bottom: bottomOffset }]}>
-      <WaveformStrip
-        samples={ekgSamples}
-        roadState={ekgRoadState}
-        variant="drive"
-        profile={ekgProfile}
-        pointerEvents="none"
-        height={undefined}
-      />
+    <View pointerEvents="box-none" style={styles.container}>
       <DriveMetricsCarousel
         potholesDiagnosed={potholesDiagnosed}
         potholeFetchEnabled={potholeFetchEnabled}
         onTogglePotholeFetch={onTogglePotholeFetch}
         totalMilesMapped={totalMilesMapped}
-        roadState={ekgRoadState}
+        roadState={roadState}
         showPagerDots={false}
         onActiveIndexChange={setActiveMetricIndex}
       />
@@ -55,9 +40,7 @@ const DrivePillCarousel: React.FC<DrivePillCarouselProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    position: "absolute",
-    left: 0,
-    right: 0,
+    width: "100%",
     paddingHorizontal: 0,
     gap: 10,
     zIndex: 6,

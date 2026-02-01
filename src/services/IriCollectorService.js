@@ -11,6 +11,7 @@ import { distanceBetweenCoordsKm } from "../utils/distance";
 import { enqueue as enqueueTelemetryBatch, readQueue as readIriUploadQueue } from "../iri/uploadQueue";
 
 const SENSOR_INTERVAL_MS = Math.max(16, Math.round(1000 / DEFAULT_SAMPLE_RATE_HZ));
+const SHOW_MOCK_POTHOLES = false;
 
 let accumulator = null;
 let handlingTrimmer = null;
@@ -260,7 +261,7 @@ const stopTrip = async (options = {}) => {
     potholeCount: potholes.length,
     statsSampleCount: stats.sampleCount,
   });
-  if (__DEV__ && segmentPasses.length > 0 && potholes.length === 0) {
+  if (__DEV__ && SHOW_MOCK_POTHOLES && segmentPasses.length > 0 && potholes.length === 0) {
     console.log("[IRI debug] injecting synthetic pothole for pipeline sanity check");
     const firstSeg = segmentPasses[0];
     potholes.push({

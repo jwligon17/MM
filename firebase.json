@@ -22,6 +22,16 @@
         "npm --prefix municipal-portal install",
         "npm --prefix municipal-portal run build"
       ]
+    },
+    {
+      "target": "municipal-demo",
+      "public": "municipal-demo/dist",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [{ "source": "**", "destination": "/index.html" }],
+      "predeploy": [
+        "npm --prefix municipal-demo install",
+        "npm --prefix municipal-demo run build"
+      ]
     }
   ]
 }

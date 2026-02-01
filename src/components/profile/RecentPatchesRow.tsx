@@ -1,5 +1,6 @@
 import React from "react";
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { getPatchImageById } from "../../patches/patchRegistry";
 
 type PatchItem = {
   id: string;
@@ -31,7 +32,11 @@ const RecentPatchesRow: React.FC<RecentPatchesRowProps> = ({ patches, onPressPat
             onPress={() => onPressPatch?.(patch.id)}
             disabled={!onPressPatch}
           >
-            <Image source={patch.image} style={styles.patchImage} resizeMode="contain" />
+            <Image
+              source={getPatchImageById(patch.id)}
+              style={styles.patchImage}
+              resizeMode="contain"
+            />
             <Text style={styles.patchLabel}>{patch.title}</Text>
           </Pressable>
         ))}

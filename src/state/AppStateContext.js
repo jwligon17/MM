@@ -8,7 +8,7 @@ import React, {
   useState,
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AppState as RNAppState } from "react-native";
+import { Alert, AppState as RNAppState } from "react-native";
 import { onAuthStateChanged, signInAnonymously, signOut } from "firebase/auth";
 import {
   multipliers as multipliersMock,
@@ -16,12 +16,15 @@ import {
 } from "../data/profileMock";
 import { currentOnboardingVersion } from "../onboarding/OnboardingPage";
 import { calculateTotalDistanceKm, isValidCoord, trimPathForPrivacy } from "../utils/distance";
+import { normalizePatch } from "../utils/patches";
 import { isDropExpired } from "../api/garageApi";
 import getFirebaseApp from "../services/firebaseClient";
 import { auth } from "../services/firebase/firebaseClient";
 import firebaseConfig from "../config/firebaseConfig";
 import { requestSpendingUnlock } from "../services/spendingLockService";
 import IriCollectorService from "../services/IriCollectorService";
+import * as Crypto from "expo-crypto";
+import { buildNextDriverProfileFromTrip } from "./patchProfileUtils";
 import {
   clearSession,
   loadSession,
@@ -71,6 +74,9 @@ const AppStateContext = createContext(null);
 const STORAGE_KEY = "milemend.appstate";
 const VEHICLE_PROFILE_KEY = "vehicle_profile_v1";
 const DRIVER_PROFILE_KEY = "driver_profile_v1";
+const DEVICE_ID_KEY = "device_id_v1";
+const PROFILE_KEY_PREFIX = "driver_profile_device_";
+const LEGACY_USER_PROFILE_PREFIX = "driver_profile_user_";
 const LEGACY_DRIVER_PROFILE_KEYS = ["onboarding_v1", "user_v1"];
 const isFirebaseConfigured = Boolean(firebaseConfig?.apiKey && firebaseConfig?.projectId);
 const PROFILE_STORAGE_FILTER = /onboard|vehicle|driver|profile|user/i;
@@ -160,6 +166,50 @@ const sanitizeDriverUsername = (text) => {
   return allowed.slice(0, MAX_DRIVER_USERNAME_LENGTH);
 };
 
+const METERS_PER_MILE = 1609.34;
+
+const createUuidV4 = async () => {
+  try {
+    const bytes = await Crypto.getRandomBytesAsync(16);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  } catch (error) {
+    if (__DEV__) {
+      console.warn("[DevTools] Failed to generate UUID v4", error);
+    }
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+};
+
+const getProfileKeyForDevice = (id) => `${PROFILE_KEY_PREFIX}${id}`;
+
+const mergePatchRecords = (base = {}, incoming = {}) => {
+  const merged = { ...base };
+  for (const [id, entry] of Object.entries(incoming || {})) {
+    if (!id) continue;
+    const existing = merged[id];
+    if (!existing) {
+      merged[id] = entry;
+      continue;
+    }
+    const existingDate = Date.parse(existing?.earnedAt || "");
+    const incomingDate = Date.parse(entry?.earnedAt || "");
+    merged[id] =
+      Number.isFinite(incomingDate) && incomingDate > existingDate ? entry : existing;
+  }
+  return merged;
+};
+
+const patchMapFromList = (list = []) =>
+  (Array.isArray(list) ? list : []).reduce((acc, patch) => {
+    const id = patch?.id || patch?.patchId || patch?.patch_id;
+    if (!id) return acc;
+    acc[id] = { earnedAt: patch?.earnedAt ?? null };
+    return acc;
+  }, {});
+
 const createInitialState = () => ({
   points: 1000,
   boostSteps: onboardingStepsMock.map((step) => ({ ...step })),
@@ -227,7 +277,9 @@ export const AppStateProvider = ({ children }) => {
   const [points, setPoints] = useState(initialStateRef.current.points);
   const [boostSteps, setBoostSteps] = useState(initialStateRef.current.boostSteps);
   const [multipliers, setMultipliers] = useState(initialStateRef.current.multipliers);
-  const [ghostModeEnabled, setGhostModeEnabled] = useState(initialStateRef.current.ghostModeEnabled);
+  const [ghostModeEnabled, setGhostModeEnabledState] = useState(
+    initialStateRef.current.ghostModeEnabled
+  );
   const [passengerModeEnabled, setPassengerModeEnabled] = useState(
     initialStateRef.current.passengerModeEnabled
   );
@@ -282,6 +334,8 @@ export const AppStateProvider = ({ children }) => {
     initialStateRef.current.vehicleCalibration
   );
   const [vehicleProfile, setVehicleProfileState] = useState(null);
+  const [deviceId, setDeviceId] = useState(null);
+  const [currentProfileKey, setCurrentProfileKey] = useState(DRIVER_PROFILE_KEY);
   const [detectionSettings, setDetectionSettings] = useState(getDefaultDetectionSettings());
   const avatarPlaceholderUrl = "https://placehold.co/640x640?text=Avatar";
   const hasCompletedOnboarding = useMemo(
@@ -312,11 +366,34 @@ export const AppStateProvider = ({ children }) => {
     setOnboardingDisplayNameState(name || null);
   }, []);
 
+  const ensureDeviceId = useCallback(async () => {
+    try {
+      const stored = await AsyncStorage.getItem(DEVICE_ID_KEY);
+      if (stored) {
+        setDeviceId(stored);
+        setCurrentProfileKey(getProfileKeyForDevice(stored));
+        return stored;
+      }
+      const created = await createUuidV4();
+      await AsyncStorage.setItem(DEVICE_ID_KEY, created);
+      setDeviceId(created);
+      setCurrentProfileKey(getProfileKeyForDevice(created));
+      return created;
+    } catch (error) {
+      console.warn("Failed to read device id", error);
+    }
+    return null;
+  }, []);
+
   const updateDriverProfile = useCallback(async (patch) => {
     setDriverProfileState((prev) => {
+      const patchValue =
+        typeof patch === "function" ? patch(prev || {}) : patch;
+      const safePatch =
+        patchValue && typeof patchValue === "object" ? patchValue : {};
       const next = {
         ...(prev || {}),
-        ...(patch || {}),
+        ...safePatch,
       };
 
       if (__DEV__) {
@@ -331,13 +408,15 @@ export const AppStateProvider = ({ children }) => {
         console.log("[DriverProfile] overwritten", { prev, next, reason: "updateDriverProfile" });
       }
 
-      AsyncStorage.setItem(DRIVER_PROFILE_KEY, JSON.stringify(next)).catch((error) => {
+      const targetKey =
+        currentProfileKey || (next?.deviceId ? getProfileKeyForDevice(next.deviceId) : DRIVER_PROFILE_KEY);
+      AsyncStorage.setItem(targetKey, JSON.stringify(next)).catch((error) => {
         console.warn("Failed to persist driver profile", error);
       });
 
       return next;
     });
-  }, []);
+  }, [currentProfileKey]);
 
   const setDriverUsername = useCallback(
     (username) => {
@@ -349,7 +428,8 @@ export const AppStateProvider = ({ children }) => {
 
   const migrateDriverUsername = useCallback(async () => {
     try {
-      const existing = await AsyncStorage.getItem(DRIVER_PROFILE_KEY);
+      const targetKey = currentProfileKey || DRIVER_PROFILE_KEY;
+      const existing = await AsyncStorage.getItem(targetKey);
       if (existing) {
         const parsed = JSON.parse(existing);
         if (typeof parsed?.username === "string" && parsed.username.trim()) return;
@@ -364,18 +444,19 @@ export const AppStateProvider = ({ children }) => {
         const cleaned = sanitizeDriverUsername(legacyParsed.username);
         if (!cleaned) continue;
         await AsyncStorage.setItem(
-          DRIVER_PROFILE_KEY,
+          targetKey,
           JSON.stringify({ username: cleaned })
         );
         return;
       }
     } catch {}
-  }, []);
+  }, [currentProfileKey]);
 
   const getStoredDriverUsername = useCallback(async () => {
     try {
       await migrateDriverUsername();
-      const raw = await AsyncStorage.getItem(DRIVER_PROFILE_KEY);
+      const targetKey = currentProfileKey || DRIVER_PROFILE_KEY;
+      const raw = await AsyncStorage.getItem(targetKey);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (typeof parsed?.username !== "string") return null;
@@ -383,7 +464,103 @@ export const AppStateProvider = ({ children }) => {
     } catch {
       return null;
     }
-  }, [migrateDriverUsername]);
+  }, [currentProfileKey, migrateDriverUsername]);
+
+  const migrateLegacyProfiles = useCallback(
+    async (targetKey) => {
+      const deviceKey = targetKey || currentProfileKey;
+      if (!deviceKey) return null;
+      const legacyKeys = new Set([DRIVER_PROFILE_KEY]);
+      const userId = authSessionRef.current?.userId || auth.currentUser?.uid;
+      if (userId) {
+        legacyKeys.add(`${LEGACY_USER_PROFILE_PREFIX}${userId}`);
+        legacyKeys.add(`driver_profile_${userId}`);
+      }
+
+      let baseProfile = {};
+      try {
+        const raw = await AsyncStorage.getItem(deviceKey);
+        baseProfile = raw ? JSON.parse(raw) || {} : {};
+      } catch {}
+
+      let mergedPatches = { ...(baseProfile?.patches || {}) };
+      let mergedPatchStats = baseProfile?.patchStats || null;
+      let mergedSelectedPatchId = baseProfile?.selectedPatchId || null;
+      let didMerge = false;
+
+      for (const legacyKey of legacyKeys) {
+        if (!legacyKey || legacyKey === deviceKey) continue;
+        try {
+          const raw = await AsyncStorage.getItem(legacyKey);
+          if (!raw) continue;
+          const parsed = JSON.parse(raw) || {};
+          const legacyPatches =
+            parsed?.patches && typeof parsed.patches === "object"
+              ? parsed.patches
+              : patchMapFromList(parsed?.earnedPatches);
+          const before = Object.keys(mergedPatches).length;
+          mergedPatches = mergePatchRecords(mergedPatches, legacyPatches);
+          if (Object.keys(mergedPatches).length !== before) {
+            didMerge = true;
+          }
+          if (!mergedSelectedPatchId && parsed?.selectedPatchId) {
+            mergedSelectedPatchId = parsed.selectedPatchId;
+            didMerge = true;
+          }
+          if (!mergedPatchStats && parsed?.patchStats) {
+            mergedPatchStats = parsed.patchStats;
+            didMerge = true;
+          }
+        } catch (error) {
+          console.warn("[ProfileMigration] failed to read legacy profile", legacyKey, error);
+        }
+      }
+
+      if (!didMerge) return baseProfile;
+
+      const updated = {
+        ...(baseProfile || {}),
+        patches: mergedPatches,
+        patchStats: mergedPatchStats,
+        selectedPatchId: mergedSelectedPatchId,
+      };
+      try {
+        await AsyncStorage.setItem(deviceKey, JSON.stringify(updated));
+        return updated;
+      } catch (error) {
+        console.warn("[ProfileMigration] failed to persist merged profile", error);
+      }
+      return updated;
+    },
+    [currentProfileKey]
+  );
+
+  const refreshDriverProfile = useCallback(async () => {
+    try {
+      await migrateDriverUsername();
+      const targetKey = currentProfileKey || DRIVER_PROFILE_KEY;
+      const migrated = await migrateLegacyProfiles(targetKey);
+      const raw = migrated ? JSON.stringify(migrated) : await AsyncStorage.getItem(targetKey);
+      if (__DEV__) console.log("[Hydrate] raw driver profile", { key: targetKey, raw });
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) || {};
+      if (__DEV__) console.log("[Hydrate] parsed driverProfile", parsed);
+      const next = {
+        ...parsed,
+        username:
+          typeof parsed?.username === "string"
+            ? sanitizeDriverUsername(parsed.username) || null
+            : null,
+        homeAddress: typeof parsed?.homeAddress === "string" ? parsed.homeAddress : null,
+        workAddress: typeof parsed?.workAddress === "string" ? parsed.workAddress : null,
+        deviceId: parsed?.deviceId || deviceId || null,
+      };
+      if (__DEV__) console.log("[Hydrate] driverProfile loaded", next);
+      setDriverProfileState(next);
+      return next;
+    } catch {}
+    return null;
+  }, [currentProfileKey, deviceId, migrateDriverUsername, migrateLegacyProfiles]);
 
   const setVehicleProfile = useCallback(async (next) => {
     setVehicleProfileState(next);
@@ -519,45 +696,32 @@ export const AppStateProvider = ({ children }) => {
   }, [getStoredDriverUsername]);
 
   useEffect(() => {
-    (async () => {
-      try {
-        await migrateDriverUsername();
-        const raw = await AsyncStorage.getItem(DRIVER_PROFILE_KEY);
-        if (__DEV__) console.log("[Hydrate] raw driver_profile_v1", raw);
-        if (!raw) return;
-        const parsed = JSON.parse(raw);
-        if (__DEV__) console.log("[Hydrate] parsed driverProfile", parsed);
-        const next = {
-          username:
-            typeof parsed?.username === "string"
-              ? sanitizeDriverUsername(parsed.username) || null
-              : null,
-          homeAddress: typeof parsed?.homeAddress === "string" ? parsed.homeAddress : null,
-          workAddress: typeof parsed?.workAddress === "string" ? parsed.workAddress : null,
-        };
-        if (__DEV__) console.log("[Hydrate] driverProfile loaded", next);
-        setDriverProfileState(next);
-      } catch {}
-    })();
-  }, [migrateDriverUsername]);
+    ensureDeviceId();
+  }, [ensureDeviceId]);
+
+  useEffect(() => {
+    if (!currentProfileKey) return;
+    refreshDriverProfile();
+  }, [currentProfileKey, refreshDriverProfile]);
 
   useEffect(() => {
     const persistDriverProfile = async () => {
       try {
+        const targetKey = currentProfileKey || DRIVER_PROFILE_KEY;
         if (driverProfile) {
-          await AsyncStorage.setItem(DRIVER_PROFILE_KEY, JSON.stringify(driverProfile));
+          await AsyncStorage.setItem(targetKey, JSON.stringify(driverProfile));
         } else {
           if (__DEV__) {
             console.log("[StorageClear] keys", {
-              keys: [DRIVER_PROFILE_KEY],
+              keys: [targetKey],
               stack: new Error().stack,
             });
             console.log("[StorageClear]", {
-              key: DRIVER_PROFILE_KEY,
+              key: targetKey,
               stack: new Error().stack,
             });
           }
-          await AsyncStorage.removeItem(DRIVER_PROFILE_KEY);
+          await AsyncStorage.removeItem(targetKey);
         }
       } catch (error) {
         console.warn("Failed to persist driver profile", error);
@@ -565,7 +729,7 @@ export const AppStateProvider = ({ children }) => {
     };
 
     persistDriverProfile();
-  }, [driverProfile]);
+  }, [currentProfileKey, driverProfile]);
 
   useEffect(() => {
     const restoreState = async () => {
@@ -577,7 +741,9 @@ export const AppStateProvider = ({ children }) => {
         if (typeof parsed.points === "number") setPoints(parsed.points);
         if (Array.isArray(parsed.boostSteps)) setBoostSteps(parsed.boostSteps);
         if (parsed.multipliers) setMultipliers(parsed.multipliers);
-        if (typeof parsed.ghostModeEnabled === "boolean") setGhostModeEnabled(parsed.ghostModeEnabled);
+        if (typeof parsed.ghostModeEnabled === "boolean") {
+          setGhostModeEnabled(parsed.ghostModeEnabled);
+        }
         if (typeof parsed.passengerModeEnabled === "boolean") {
           setPassengerModeEnabled(parsed.passengerModeEnabled);
         }
@@ -938,8 +1104,12 @@ export const AppStateProvider = ({ children }) => {
     checkAndUnlockBadgesOnOfferUse(null, totalUses);
   }, [checkAndUnlockBadgesOnOfferUse, hasHydratedState, usedOffers]);
 
+  const setGhostModeEnabled = useCallback((enabled) => {
+    setGhostModeEnabledState(Boolean(enabled));
+  }, []);
+
   const toggleGhostMode = useCallback(() => {
-    setGhostModeEnabled((prev) => !prev);
+    setGhostModeEnabledState((prev) => !prev);
   }, []);
 
   const addPointEvent = useCallback((event = {}) => {
@@ -1494,22 +1664,152 @@ export const AppStateProvider = ({ children }) => {
       rawPathPointCount: Array.isArray(rawPathCoords) ? rawPathCoords.length : 0,
     };
 
+    let didAppend = false;
     setTripHistory((prev) => {
+      if (prev.some((trip) => trip?.id === normalized.id)) {
+        return prev;
+      }
+      didAppend = true;
       const next = [...prev, normalized];
       checkAndUnlockBadgesOnTripEnd(normalized, next);
       return next;
     });
 
-    if (trimmedPathCoords.length > 0) {
+    if (didAppend && trimmedPathCoords.length > 0) {
       setDrivenCoords((prev) => [...prev, ...trimmedPathCoords]);
     }
 
     setActiveTrip(null);
     setPassengerModeEnabled(false);
-    incrementMissionProgress("trips_week", 1);
+    if (didAppend) {
+      incrementMissionProgress("trips_week", 1);
+    }
 
     return normalized;
   }, [activeTrip, checkAndUnlockBadgesOnTripEnd, ghostModeEnabled, incrementMissionProgress, trimPathForPrivacy]);
+
+  const handleTripCompletion = useCallback(
+    async (summary = {}) => {
+      const normalized = endTrip(summary);
+      if (!normalized) return null;
+
+      const tripId = normalized.id;
+      const alreadyStored = Array.isArray(tripHistory)
+        ? tripHistory.some((trip) => trip?.id === tripId)
+        : false;
+
+      if (alreadyStored) {
+        if (__DEV__) {
+          console.log("[TripCompletion] trip already processed", { tripId });
+        }
+        return normalized;
+      }
+
+      const startMs = Date.parse(normalized.startTime);
+      const endMs = Date.parse(normalized.endTime);
+      const durationSeconds = Number.isFinite(summary.durationSeconds)
+        ? summary.durationSeconds
+        : Math.max(1, Math.round((endMs - startMs) / 1000));
+      const distanceMiles = Number.isFinite(summary.distanceMiles)
+        ? summary.distanceMiles
+        : normalized.distanceMeters * 0.000621371;
+      const harshBrakes = Number.isFinite(summary.harshBrakes) ? summary.harshBrakes : 0;
+      const harshAccels = Number.isFinite(summary.harshAccels) ? summary.harshAccels : 0;
+      const harshTurns = Number.isFinite(summary.harshTurns) ? summary.harshTurns : 0;
+      const path = Array.isArray(normalized.pathCoords) ? normalized.pathCoords : [];
+      const firstPoint = path[0] || null;
+      const lastPoint = path.length > 0 ? path[path.length - 1] : null;
+
+      let resolvedDeviceId = driverProfile?.deviceId || deviceId;
+      let profileId = driverProfile?.profileId || resolvedDeviceId;
+      if (!resolvedDeviceId) {
+        resolvedDeviceId = await createUuidV4();
+        console.warn("[TripCompletion] missing deviceId, created new one", { deviceId: resolvedDeviceId });
+        try {
+          await AsyncStorage.setItem(DEVICE_ID_KEY, resolvedDeviceId);
+          setDeviceId(resolvedDeviceId);
+          setCurrentProfileKey(getProfileKeyForDevice(resolvedDeviceId));
+        } catch (error) {
+          console.warn("[TripCompletion] failed to persist deviceId", error);
+        }
+      }
+      if (!profileId) {
+        profileId = resolvedDeviceId;
+        console.warn("[TripCompletion] missing profileId, created new one", { profileId });
+      }
+
+      const tripSummary = {
+        tripId,
+        deviceId: resolvedDeviceId,
+        startedAt: normalized.startTime,
+        endedAt: normalized.endTime,
+        distanceMiles,
+        durationSeconds,
+        harshBrakes,
+        harshAccels,
+        harshTurns,
+        startLat: Number.isFinite(firstPoint?.latitude) ? firstPoint.latitude : null,
+        startLon: Number.isFinite(firstPoint?.longitude) ? firstPoint.longitude : null,
+        endLat: Number.isFinite(lastPoint?.latitude) ? lastPoint.latitude : null,
+        endLon: Number.isFinite(lastPoint?.longitude) ? lastPoint.longitude : null,
+      };
+
+      try {
+        let patchLog = null;
+        let nextDriverProfileSnapshot = null;
+        updateDriverProfile?.((prevProfile) => {
+          const { nextDriverProfile, updatedProfile, newlyEarned } =
+            buildNextDriverProfileFromTrip({
+              prevProfile,
+              resolvedDeviceId,
+              profileId,
+              tripId,
+              tripSummary,
+            });
+          patchLog = { updatedProfile, newlyEarned };
+          nextDriverProfileSnapshot = nextDriverProfile;
+          return nextDriverProfile;
+        });
+
+        try {
+          const targetKey = currentProfileKey || getProfileKeyForDevice(resolvedDeviceId);
+          if (nextDriverProfileSnapshot) {
+            await AsyncStorage.setItem(targetKey, JSON.stringify(nextDriverProfileSnapshot));
+          }
+        } catch (error) {
+          console.warn("[TripCompletion] failed to persist driver profile", error);
+          if (__DEV__) {
+            Alert.alert("Trip persistence failed", error?.message || "Driver profile save failed.");
+          }
+        }
+
+        if (__DEV__ && patchLog) {
+          console.log("[TripCompletion] patch engine applied", {
+            tripId,
+            totalTrips: patchLog.updatedProfile.stats.totalTrips,
+            totalMiles: patchLog.updatedProfile.stats.totalMiles,
+            earnedPatchIds: Object.keys(patchLog.updatedProfile.patches || {}),
+            newlyEarnedPatchIds: patchLog.newlyEarned,
+          });
+        }
+      } catch (error) {
+        console.warn("[TripCompletion] patch engine failed", error);
+        if (__DEV__) {
+          Alert.alert("Trip processing failed", error?.message || "Patch engine failed.");
+        }
+      }
+
+      return normalized;
+    },
+    [
+      currentProfileKey,
+      deviceId,
+      driverProfile,
+      endTrip,
+      tripHistory,
+      updateDriverProfile,
+    ]
+  );
 
   const startDrivingSession = useCallback(
     (startTime, firstCoord) => {
@@ -1556,13 +1856,13 @@ export const AppStateProvider = ({ children }) => {
   );
 
   const finishDrivingSession = useCallback(
-    (options = {}) => {
+    async (options = {}) => {
       const endTime = options.endTime || new Date().toISOString();
       if (!isDriving) return null;
 
       const rawCoords = Array.isArray(options.pathCoords) ? options.pathCoords : driveCoordsBuffer;
 
-      const summary = endTrip({
+      const summary = await handleTripCompletion({
         startTime: options.startTime || driveStartTime || activeTrip?.startTime,
         endTime,
         pathCoords: rawCoords,
@@ -1622,51 +1922,97 @@ export const AppStateProvider = ({ children }) => {
 
       return summary;
     },
-    [activeTrip, driveCoordsBuffer, driveStartTime, earnPoints, endTrip, ghostModeEnabled, isDriving]
+    [
+      activeTrip,
+      driveCoordsBuffer,
+      driveStartTime,
+      earnPoints,
+      ghostModeEnabled,
+      handleTripCompletion,
+      isDriving,
+    ]
   );
 
-  const simulateTrip = useCallback(() => {
-    if (ghostModeEnabled) return null;
+  const simulateTrip = useCallback(
+    async (options = {}) => {
+      if (ghostModeEnabled) return null;
 
-    const now = Date.now();
-    const distanceMeters = 1600;
-    const mockPath = [
-      { latitude: 37.7749, longitude: -122.4194 },
-      { latitude: 37.7752, longitude: -122.414 },
-      { latitude: 37.7758, longitude: -122.41 },
-      { latitude: 37.7761, longitude: -122.405 },
-      { latitude: 37.7766, longitude: -122.401 },
-      { latitude: 37.777, longitude: -122.397 },
-      { latitude: 37.7775, longitude: -122.393 },
-      { latitude: 37.778, longitude: -122.389 },
-      { latitude: 37.7785, longitude: -122.385 },
-      { latitude: 37.779, longitude: -122.381 },
-      { latitude: 37.7795, longitude: -122.377 },
-      { latitude: 37.78, longitude: -122.373 },
-    ];
+      const preset = options?.preset || "default";
+      const durationSeconds = Number.isFinite(options.durationSeconds)
+        ? options.durationSeconds
+        : preset === "qualifying"
+        ? 180
+        : 300;
+      const distanceMiles = Number.isFinite(options.distanceMiles)
+        ? options.distanceMiles
+        : preset === "qualifying"
+        ? 1.0
+        : 1.0;
+      const harshBrakes = Number.isFinite(options.harshBrakes)
+        ? options.harshBrakes
+        : preset === "qualifying"
+        ? 0
+        : 0;
+      const harshAccels = Number.isFinite(options.harshAccels)
+        ? options.harshAccels
+        : preset === "qualifying"
+        ? 0
+        : 0;
+      const harshTurns = Number.isFinite(options.harshTurns)
+        ? options.harshTurns
+        : preset === "qualifying"
+        ? 0
+        : 0;
+      const pointsEarned = Number.isFinite(options.pointsEarned) ? options.pointsEarned : 120;
 
-    const summary = {
-      id: `sim-${now}`,
-      startTime: new Date(now - 5 * 60 * 1000).toISOString(),
-      endTime: new Date(now).toISOString(),
-      distanceMeters,
-      pointsEarned: 120,
-      pathCoords: mockPath,
-    };
+      const now = Date.now();
+      const startedAtMs = now - Math.max(1, durationSeconds) * 1000;
+      const mockPath = [
+        { latitude: 37.7749, longitude: -122.4194 },
+        { latitude: 37.7752, longitude: -122.414 },
+        { latitude: 37.7758, longitude: -122.41 },
+        { latitude: 37.7761, longitude: -122.405 },
+        { latitude: 37.7766, longitude: -122.401 },
+        { latitude: 37.777, longitude: -122.397 },
+        { latitude: 37.7775, longitude: -122.393 },
+        { latitude: 37.778, longitude: -122.389 },
+        { latitude: 37.7785, longitude: -122.385 },
+        { latitude: 37.779, longitude: -122.381 },
+        { latitude: 37.7795, longitude: -122.377 },
+        { latitude: 37.78, longitude: -122.373 },
+      ];
 
-    const normalized = endTrip(summary);
-    if (!normalized) return null;
+      const tripId = await createUuidV4();
+      const distanceMeters = Math.max(0, distanceMiles) * METERS_PER_MILE;
+      const summary = {
+        id: tripId,
+        startTime: new Date(startedAtMs).toISOString(),
+        endTime: new Date(now).toISOString(),
+        distanceMeters,
+        distanceMiles,
+        durationSeconds,
+        harshBrakes,
+        harshAccels,
+        harshTurns,
+        pointsEarned,
+        pathCoords: mockPath,
+      };
 
-    setTotalDistanceKm((prev) => prev + normalized.distanceMeters / 1000);
-    if (normalized.pointsEarned > 0) {
-      earnPoints(normalized.pointsEarned, {
-        source: "trip",
-        description: "Simulated trip (dev)",
-      });
-    }
+      const normalized = await handleTripCompletion(summary);
+      if (!normalized) return null;
 
-    return normalized;
-  }, [earnPoints, endTrip, ghostModeEnabled]);
+      setTotalDistanceKm((prev) => prev + normalized.distanceMeters / 1000);
+      if (normalized.pointsEarned > 0) {
+        earnPoints(normalized.pointsEarned, {
+          source: "trip",
+          description: "Simulated trip (dev)",
+        });
+      }
+
+      return normalized;
+    },
+    [earnPoints, ghostModeEnabled, handleTripCompletion, setTotalDistanceKm]
+  );
 
   const isAvatarOwned = useCallback(
     (avatarId) => {
@@ -1852,7 +2198,7 @@ export const AppStateProvider = ({ children }) => {
       await AsyncStorage.removeItem(STORAGE_KEY);
       if (__DEV__) {
         console.log("[StorageClear] keys", {
-          keys: [STORAGE_KEY, VEHICLE_PROFILE_KEY, DRIVER_PROFILE_KEY],
+          keys: [STORAGE_KEY, VEHICLE_PROFILE_KEY, currentProfileKey || DRIVER_PROFILE_KEY, DEVICE_ID_KEY],
           stack: new Error().stack,
         });
         console.log("[StorageClear]", {
@@ -1864,12 +2210,17 @@ export const AppStateProvider = ({ children }) => {
           stack: new Error().stack,
         });
         console.log("[StorageClear]", {
-          key: DRIVER_PROFILE_KEY,
+          key: currentProfileKey || DRIVER_PROFILE_KEY,
+          stack: new Error().stack,
+        });
+        console.log("[StorageClear]", {
+          key: DEVICE_ID_KEY,
           stack: new Error().stack,
         });
       }
       await AsyncStorage.removeItem(VEHICLE_PROFILE_KEY);
-      await AsyncStorage.removeItem(DRIVER_PROFILE_KEY);
+      await AsyncStorage.removeItem(currentProfileKey || DRIVER_PROFILE_KEY);
+      await AsyncStorage.removeItem(DEVICE_ID_KEY);
       await clearSession();
     } catch (error) {
       console.warn("Failed to clear app state", error);
@@ -1923,10 +2274,12 @@ export const AppStateProvider = ({ children }) => {
     setOnboardingAuthChoiceState(fresh.onboardingAuthChoice);
     setOnboardingDisplayNameState(fresh.onboardingDisplayName);
     setDriverProfileState(fresh.driverProfile);
+    setDeviceId(null);
+    setCurrentProfileKey(DRIVER_PROFILE_KEY);
     setVehicleCalibration(fresh.vehicleCalibration);
     setVehicleProfileState(null);
     setHasHydratedState(true);
-  }, [driverProfile, updateAuthSession]);
+  }, [currentProfileKey, driverProfile, updateAuthSession]);
 
   const logOut = useCallback(async () => {
     if (isFirebaseConfigured) {
@@ -2035,8 +2388,11 @@ export const AppStateProvider = ({ children }) => {
     setOnboardingAuthChoice,
     onboardingDisplayName,
     setOnboardingDisplayName,
+    deviceId,
+    currentProfileKey,
     driverProfile,
     updateDriverProfile,
+    refreshDriverProfile,
     setDriverUsername,
     avatarImageMap,
     getAvatarImageById,

@@ -1,14 +1,16 @@
-import React, { useCallback, useMemo } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useMemo, useRef } from "react";
+import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppState } from "../state/AppStateContext";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import AppTopBar from "../components/navigation/AppTopBar";
+import AppScreenHeader from "../components/AppScreenHeader";
 import PotholeParentPromoCard from "../components/trips/PotholeParentPromoCard";
 import CommunityRoadsCard from "../components/trips/CommunityRoadsCard";
 import GradientText from "../components/ui/GradientText";
+import useEdgeSwipe from "../utils/useEdgeSwipe";
+import { DRIVE_SWIPE_PRESET, navigateToDriveTab } from "../navigation/driveSwipe";
 
 const metersToMiles = (meters = 0) => {
   const numeric = Number(meters);
@@ -51,8 +53,8 @@ const TripStat = ({ label, value, color = "#ffffff" }) => (
   </View>
 );
 
-const ImpactReportCard = ({ title, timeframe, status, icon, iconColor }) => (
-  <View style={screenStyles.impactCard}>
+const ImpactReportCard = ({ title, timeframe, status, icon, iconColor, style }) => (
+  <View style={[screenStyles.impactCard, style]}>
     <LinearGradient
       colors={["rgba(255,255,255,0.06)", "rgba(255,255,255,0.02)"]}
       start={{ x: 0, y: 0 }}
@@ -88,11 +90,28 @@ const TripsDivider = ({ style }) => (
 
 const TripHistoryScreen = () => {
   const navigation = useNavigation();
+  const tabNav = navigation.getParent?.();
+  const tabState = tabNav?.getState?.();
+  const activeTab = tabState?.routes?.[tabState.index]?.name;
+  const isTripsTab = activeTab === "Trips";
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
   const { tripHistory } = useAppState();
+  const scrollRef = useRef(null);
+  const lastX = useRef(0);
+  const didInitRef = useRef(false);
+  const { panHandlers } = useEdgeSwipe({
+    enabled: isTripsTab,
+    ...DRIVE_SWIPE_PRESET,
+    onSwipeRight: () => navigateToDriveTab(navigation),
+  });
 
   const safeBottom = Number.isFinite(insets?.bottom) ? insets.bottom : 0;
   const bottomPadding = safeBottom + 24;
+  const PAGE_PADDING = 18;
+  const CARD_GAP = 16;
+  const baseTwoUp = (screenWidth - PAGE_PADDING * 2 - CARD_GAP) / 2;
+  const CARD_WIDTH = Math.round(baseTwoUp * 1.25);
 
   const sortedTrips = useMemo(() => {
     const copy = Array.isArray(tripHistory) ? [...tripHistory] : [];
@@ -120,13 +139,6 @@ const TripHistoryScreen = () => {
   const potholesDetectedDisplay = Math.max(0, Math.round(totals.potholesDetected));
   const roughMilesDisplay = totals.roughMiles.toFixed(1);
 
-  const handlePressMenu = useCallback(() => {
-    const parentNav = navigation?.getParent?.();
-    if (parentNav?.openDrawer) {
-      parentNav.openDrawer();
-    }
-  }, [navigation]);
-
   const handlePressPromo = useCallback(() => {
     const potholeParentTabRouteName = "Impact";
     const rootTabsRouteName = "MainTabs";
@@ -146,8 +158,19 @@ const TripHistoryScreen = () => {
     navigation?.navigate?.(potholeParentTabRouteName);
   }, [navigation]);
 
+  const handleImpactScroll = useCallback((event) => {
+    lastX.current = event?.nativeEvent?.contentOffset?.x ?? 0;
+  }, []);
+
+  React.useEffect(() => {
+    if (didInitRef.current) return;
+    didInitRef.current = true;
+    scrollRef.current?.scrollTo({ x: 0, animated: false });
+  }, []);
+
   return (
     <View style={screenStyles.screen}>
+      <View pointerEvents="box-only" style={screenStyles.edgeSwipeZone} {...panHandlers} />
       <LinearGradient
         pointerEvents="none"
         colors={["rgba(255,255,255,0.02)", "rgba(0,0,0,0)"]}
@@ -164,14 +187,7 @@ const TripHistoryScreen = () => {
       />
 
       <SafeAreaView style={screenStyles.safeArea} edges={["left", "right", "bottom"]}>
-        <View style={screenStyles.header}>
-          <AppTopBar
-            onPressMenu={handlePressMenu}
-            renderCenter={() => <Text style={screenStyles.headerTitle}>Trip</Text>}
-            centerAlign="center"
-            style={screenStyles.topBar}
-          />
-        </View>
+        <AppScreenHeader title="Trip" />
 
         <ScrollView
           style={screenStyles.scrollArea}
@@ -217,7 +233,7 @@ const TripHistoryScreen = () => {
           <View style={screenStyles.communityImpactBlock}>
             <View style={screenStyles.communityBlock}>
               <PotholeParentPromoCard onPress={handlePressPromo} />
-              <TripsDivider style={screenStyles.dividerTopTight} />
+              <TripsDivider style={screenStyles.sectionDivider} />
 
               <View style={screenStyles.section}>
                 <Text style={screenStyles.sectionTitle}>Community</Text>
@@ -228,22 +244,39 @@ const TripHistoryScreen = () => {
                 <View style={screenStyles.communityMeterBlock}>
                   <CommunityRoadsCard />
                 </View>
-                <View style={screenStyles.communityDivider} />
               </View>
             </View>
 
             <View style={[screenStyles.section, screenStyles.impactSection]}>
-              <Text style={screenStyles.sectionTitle}>Impact Reports</Text>
-              <Text style={screenStyles.sectionBody}>
-                Track how your drives stack up and where your pothole impact ranks across the city.
-              </Text>
-              <View style={screenStyles.impactRow}>
+              <View style={screenStyles.impactHeader}>
+                <Text style={[screenStyles.sectionTitle, screenStyles.impactTitle]}>Impact Reports</Text>
+                <Text style={[screenStyles.sectionBody, screenStyles.impactBody]}>
+                  You and the community are making an impact with every mile you drive.
+                </Text>
+              </View>
+              <ScrollView
+                horizontal
+                ref={scrollRef}
+                onScroll={handleImpactScroll}
+                scrollEventThrottle={16}
+                decelerationRate="fast"
+                snapToInterval={CARD_WIDTH + CARD_GAP}
+                snapToAlignment="start"
+                showsHorizontalScrollIndicator={false}
+                style={{ width: "100%" }}
+                contentContainerStyle={{
+                  gap: CARD_GAP,
+                  justifyContent: "flex-start",
+                  paddingRight: PAGE_PADDING,
+                }}
+              >
                 <ImpactReportCard
                   title="ROAD LEADERBOARD"
                   timeframe="This Month"
                   status="New leader"
                   icon="arrow-up-bold"
                   iconColor="#22c55e"
+                  style={{ width: CARD_WIDTH }}
                 />
                 <ImpactReportCard
                   title="POTHOLE RANK"
@@ -251,8 +284,9 @@ const TripHistoryScreen = () => {
                   status="Worst streak flagged"
                   icon="alert-circle-outline"
                   iconColor="#f87171"
+                  style={{ width: CARD_WIDTH }}
                 />
-              </View>
+              </ScrollView>
             </View>
           </View>
         </ScrollView>
@@ -273,23 +307,19 @@ const screenStyles = StyleSheet.create({
     backgroundColor: "#05070d",
     position: "relative",
   },
+  edgeSwipeZone: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 120,
+    zIndex: 10,
+  },
   safeArea: {
     flex: 1,
   },
   scrollArea: {
     flex: 1,
-  },
-  header: {
-    width: "100%",
-    alignSelf: "stretch",
-    position: "relative",
-  },
-  headerTitle: {
-    color: "#ffffff",
-    fontSize: 34,
-    fontWeight: "900",
-    letterSpacing: 0.5,
-    textAlign: "center",
   },
   content: {
     paddingHorizontal: 18,
@@ -341,21 +371,25 @@ const screenStyles = StyleSheet.create({
     gap: 0,
   },
   communityMeterBlock: {
-    marginTop: 14,
-    marginBottom: 12,
+    marginTop: 0,
+    marginBottom: 0,
     alignItems: "center",
-  },
-  communityDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255,255,255,0.18)",
-    marginTop: 14,
-    marginBottom: 18,
+    alignSelf: "stretch",
   },
   communityBody: {
     marginBottom: 12,
   },
   impactSection: {
-    marginTop: 14,
+    marginTop: 8,
+  },
+  impactHeader: {
+    gap: 0,
+  },
+  impactTitle: {
+    marginBottom: 4,
+  },
+  impactBody: {
+    marginTop: 0,
   },
   sectionTitle: {
     color: "#ffffff",
@@ -373,12 +407,7 @@ const screenStyles = StyleSheet.create({
     color: "#4ade80",
     fontWeight: "800",
   },
-  impactRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
   impactCard: {
-    flex: 1,
     borderRadius: 24,
     backgroundColor: "rgba(255,255,255,0.04)",
     borderWidth: 1,
@@ -430,16 +459,9 @@ const screenStyles = StyleSheet.create({
     height: 6,
     opacity: 0.6,
   },
-  dividerTopTight: {
-    marginTop: 12,
-    marginBottom: 10,
-  },
-  dividerBottomTight: {
-    marginTop: 18,
-    marginBottom: 12,
-  },
-  topBar: {
-    width: "100%",
+  sectionDivider: {
+    marginTop: 8,
+    marginBottom: 4,
   },
   topSheen: {
     ...StyleSheet.absoluteFillObject,

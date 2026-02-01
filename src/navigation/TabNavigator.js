@@ -1,6 +1,18 @@
 import React from "react";
-import { Image, Pressable, StyleSheet, View } from "react-native";
+import {
+  Dimensions,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import {
+  createDrawerNavigator,
+  DrawerContentScrollView,
+  DrawerItem,
+} from "@react-navigation/drawer";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -15,10 +27,16 @@ import ImpactEventsScreen from "../screens/ImpactEventsScreen";
 import PotholeParentScreen from "../screens/PotholeParentScreen";
 import PotholeDebugScreen from "../screens/PotholeDebugScreen";
 import RewardsScreen from "../screens/RewardsScreen";
+import AboutUsScreen from "../screens/AboutUsScreen";
+import PrivacyPolicyScreen from "../screens/PrivacyPolicyScreen";
+import SupportScreen from "../screens/SupportScreen";
+import TermsScreen from "../screens/TermsScreen";
+import FaqScreen from "../screens/FaqScreen";
 import { useAppState } from "../state/AppStateContext";
 import { styles } from "../styles";
 
 const Tab = createBottomTabNavigator();
+const Drawer = createDrawerNavigator();
 const ImpactStack = createNativeStackNavigator();
 const TripsStack = createNativeStackNavigator();
 const ProfileStack = createNativeStackNavigator();
@@ -305,15 +323,176 @@ const MainTabs = () => {
   );
 };
 
+const AppDrawerContent = (props) => {
+  const { navigation } = props;
+  const { ghostModeEnabled, toggleGhostMode } = useAppState();
+
+  const handleDrawerNavigate = (routeName) => {
+    navigation.closeDrawer();
+    navigation.navigate(routeName);
+  };
+
+  const renderDrawerIcon =
+    (name) =>
+    ({ color, size }) => (
+      <MaterialCommunityIcons name={name} color={color} size={size} />
+    );
+
+  const openDriveModal = (key) => {
+    navigation.navigate("MainTabs", {
+      screen: "Drive",
+      params: {
+        screen: "DriveHome",
+        params: { openDriveModal: key },
+      },
+    });
+  };
+
+  return (
+    <DrawerContentScrollView {...props}>
+      <DrawerItem
+        label="About Us"
+        icon={renderDrawerIcon("information-outline")}
+        onPress={() => handleDrawerNavigate("AboutUs")}
+      />
+      <DrawerItem
+        label="Privacy Policy"
+        icon={renderDrawerIcon("shield-lock-outline")}
+        onPress={() => handleDrawerNavigate("PrivacyPolicy")}
+      />
+      <DrawerItem
+        label="Support"
+        icon={renderDrawerIcon("lifebuoy")}
+        onPress={() => handleDrawerNavigate("Support")}
+      />
+      <DrawerItem
+        label="FAQ"
+        icon={renderDrawerIcon("help-circle-outline")}
+        onPress={() => handleDrawerNavigate("FAQ")}
+      />
+      <DrawerItem
+        label="Terms"
+        icon={renderDrawerIcon("file-document-outline")}
+        onPress={() => handleDrawerNavigate("Terms")}
+      />
+      {__DEV__ ? (
+        <View style={drawerStyles.devSection}>
+          <Text style={drawerStyles.devHeader}>Developer</Text>
+          <DrawerItem
+            label="Dev Tools"
+            onPress={() => navigation.navigate("DevTools")}
+          />
+          <DrawerItem
+            label={`Ghost Mode${ghostModeEnabled ? " (On)" : " (Off)"}`}
+            onPress={() => toggleGhostMode?.()}
+          />
+        </View>
+      ) : null}
+    </DrawerContentScrollView>
+  );
+};
+
+const drawerStyles = StyleSheet.create({
+  devSection: {
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(15, 23, 42, 0.16)",
+  },
+  devHeader: {
+    paddingHorizontal: 16,
+    paddingBottom: 6,
+    fontSize: 12,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    color: "rgba(15, 23, 42, 0.6)",
+  },
+});
+
+const DrawerNavigator = () => {
+  const menuSwipeOptions = {
+    swipeEnabled: true,
+    swipeEdgeWidth: 120,
+    swipeMinDistance: 15,
+  };
+
+  return (
+    <Drawer.Navigator
+      screenOptions={{
+        headerShown: false,
+        drawerType: "front",
+        overlayColor: "rgba(0,0,0,0.35)",
+        drawerStyle: {
+          width: Math.min(320, Dimensions.get("window").width * 0.72),
+          backgroundColor: "#FFFFFF",
+        },
+      }}
+      drawerContent={(props) => <AppDrawerContent {...props} />}
+    >
+      <Drawer.Screen
+        name="MainTabs"
+        component={MainTabs}
+        options={{ swipeEnabled: false }}
+      />
+      <Drawer.Screen
+        name="AboutUs"
+        component={AboutUsScreen}
+        options={menuSwipeOptions}
+      />
+      <Drawer.Screen
+        name="PrivacyPolicy"
+        component={PrivacyPolicyScreen}
+        options={menuSwipeOptions}
+      />
+      <Drawer.Screen
+        name="Support"
+        component={SupportScreen}
+        options={menuSwipeOptions}
+      />
+      <Drawer.Screen
+        name="FAQ"
+        component={FaqScreen}
+        options={menuSwipeOptions}
+      />
+      <Drawer.Screen
+        name="Terms"
+        component={TermsScreen}
+        options={menuSwipeOptions}
+      />
+    </Drawer.Navigator>
+  );
+};
+
 const TabNavigator = () => {
   return (
     <RootStack.Navigator
-      initialRouteName="MainTabs"
+      initialRouteName="MainDrawer"
       screenOptions={{ headerShown: false }}
     >
-      <RootStack.Screen name="MainTabs" component={MainTabs} />
+      <RootStack.Screen name="MainDrawer" component={DrawerNavigator} />
       <RootStack.Screen name="Rewards" component={RewardsStackScreen} />
       <RootStack.Screen name="DevTools" component={DevToolsScreen} />
+      <RootStack.Screen name="AboutUs" component={AboutUsScreen} />
+      <RootStack.Screen
+        name="PrivacyPolicy"
+        component={PrivacyPolicyScreen}
+        options={{ headerShown: false }}
+      />
+      <RootStack.Screen
+        name="Support"
+        component={SupportScreen}
+        options={{ headerShown: false }}
+      />
+      <RootStack.Screen
+        name="FAQ"
+        component={FaqScreen}
+        options={{ headerShown: false }}
+      />
+      <RootStack.Screen
+        name="Terms"
+        component={TermsScreen}
+        options={{ headerShown: false }}
+      />
     </RootStack.Navigator>
   );
 };

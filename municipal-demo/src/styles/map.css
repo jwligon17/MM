@@ -1,0 +1,30 @@
+.dashboard-map {
+  position: relative;
+  border-radius: 24px;
+  overflow: hidden;
+  height: 560px;
+  background: #0f172a;
+}
+
+.dashboard-map__container {
+  height: 100%;
+  width: 100%;
+}
+
+.dashboard-map .leaflet-container {
+  height: 100%;
+  width: 100%;
+  font-family: "Poppins", system-ui, sans-serif;
+}
+
+@media (max-width: 900px) {
+  .dashboard-map {
+    height: 420px;
+  }
+}
+
+@media (max-width: 700px) {
+  .dashboard-map {
+    height: 320px;
+  }
+}

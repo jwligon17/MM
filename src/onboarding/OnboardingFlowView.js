@@ -58,6 +58,7 @@ import { onboardingAssets } from "../assets/onboardingAssets";
 import TopPillWordmarkOverlay from "./components/TopPillWordmarkOverlay";
 import { auth } from "../services/firebase/firebaseClient";
 import { claimUsername } from "../services/usernames/usernameService";
+import { normalizePatch } from "../utils/patches";
 
 const CTA_BOTTOM_INSET = 120;
 
@@ -101,9 +102,13 @@ const OnboardingFlowView = ({ onComplete }) => {
     setOnboardingDisplayName,
     onboardingDisplayName,
     setDriverUsername,
+    refreshDriverProfile,
+    updateDriverProfile,
     driverProfile,
+    currentProfileKey,
     setVehicleProfile,
   } = useAppState();
+  const driverProfileStorageKey = currentProfileKey || DRIVER_STORAGE_KEY;
   const listRef = useRef(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [multiSelectAnswers, setMultiSelectAnswers] = useState({}); // TODO: Persist to app state when available.
@@ -159,7 +164,7 @@ const OnboardingFlowView = ({ onComplete }) => {
         console.log("[OnboardingComplete] about to persist", {
           username,
           vehicleData: { username },
-          storageKey: DRIVER_STORAGE_KEY,
+          storageKey: driverProfileStorageKey,
         });
       }
       const vehicleJson = JSON.stringify(vehiclePayload);
@@ -179,14 +184,14 @@ const OnboardingFlowView = ({ onComplete }) => {
     if (username !== null) {
       let existingDriver = {};
       try {
-        const existingRaw = await AsyncStorage.getItem(DRIVER_STORAGE_KEY);
+        const existingRaw = await AsyncStorage.getItem(driverProfileStorageKey);
         existingDriver = existingRaw ? JSON.parse(existingRaw) : {};
       } catch {}
       const nextDriver = { ...(existingDriver || {}), username };
-      await AsyncStorage.setItem(DRIVER_STORAGE_KEY, JSON.stringify(nextDriver));
-      const driverRaw = await AsyncStorage.getItem(DRIVER_STORAGE_KEY);
+      await AsyncStorage.setItem(driverProfileStorageKey, JSON.stringify(nextDriver));
+      const driverRaw = await AsyncStorage.getItem(driverProfileStorageKey);
       console.log("[OnboardingPersist] verify", {
-        key: DRIVER_STORAGE_KEY,
+        key: driverProfileStorageKey,
         raw: driverRaw?.slice(0, 300),
       });
     }
@@ -197,7 +202,14 @@ const OnboardingFlowView = ({ onComplete }) => {
       console.log("[OnboardingComplete] persisted", { storageKey: VEHICLE_STORAGE_KEY });
     }
     onComplete?.();
-  }, [buildVehicleProfile, driverProfile, onboardingDisplayName, onComplete, setVehicleProfile]);
+  }, [
+    buildVehicleProfile,
+    driverProfile,
+    driverProfileStorageKey,
+    onboardingDisplayName,
+    onComplete,
+    setVehicleProfile,
+  ]);
   const [canContinue, setCanContinue] = useState(true);
   const [locationPrePromptDone, setLocationPrePromptDone] = useState(false);
   const [locationPermissionStatus, setLocationPermissionStatus] =
@@ -212,7 +224,7 @@ const OnboardingFlowView = ({ onComplete }) => {
   const [coolName, setCoolName] = useState("");
   const [usernameCanContinue, setUsernameCanContinue] = useState(false);
   const [usernameClaimInFlight, setUsernameClaimInFlight] = useState(false);
-  const [swipeEnabled, setSwipeEnabled] = useState(true);
+  const swipeEnabled = false;
   const normalizeDriverUsername = useCallback(
     (name) => sanitizeCoolName((name || "").trim()),
     []
@@ -323,13 +335,108 @@ const OnboardingFlowView = ({ onComplete }) => {
   }, [currentPage?.id, currentPage?.type]);
 
   const handleAttachPatch = useCallback(
-    (patchId) => {
+    async (patchId, patchTitle, patchImage) => {
       if (!patchId) return;
+      const patchEntry = normalizePatch({
+        id: patchId,
+        title: patchTitle ?? "Patch",
+        image: patchImage ?? null,
+      });
+      if (__DEV__) {
+        console.log("[Onboarding][PatchAttach] selected", {
+          selectedPatchId: patchId,
+          patchEntry,
+          userId: auth.currentUser?.uid ?? null,
+        });
+        console.log("[Onboarding][PatchAttach] set store fields", {
+          "appState.attachedPatchId": patchId,
+          "appState.profilePatchId": patchId,
+          "driverProfile.selectedPatchId": patchId,
+        });
+      }
       setAttachedPatchId(patchId);
       persistAttachedPatchId?.(patchId);
       setProfilePatchId?.(patchId);
+      if (updateDriverProfile) {
+        const existingRecent = Array.isArray(driverProfile?.recentPatches)
+          ? driverProfile.recentPatches
+          : [];
+        const existingEarned = Array.isArray(driverProfile?.earnedPatches)
+          ? driverProfile.earnedPatches
+          : [];
+        const dedupeById = (list) =>
+          list.filter((item) => item?.id && item.id !== patchId);
+        updateDriverProfile({
+          recentPatches: patchEntry
+            ? [patchEntry, ...dedupeById(existingRecent)]
+            : existingRecent,
+          earnedPatches: patchEntry
+            ? [patchEntry, ...dedupeById(existingEarned)]
+            : existingEarned,
+          selectedPatchId: patchId,
+          canEarnPatches: true,
+          features: {
+            ...(driverProfile?.features || {}),
+            patchesUnlocked: true,
+          },
+        });
+      }
+      try {
+        const onboardingPatchPayload = JSON.stringify(patchEntry);
+        await AsyncStorage.setItem("onboardingSelectedPatch", onboardingPatchPayload);
+        if (__DEV__) {
+          console.log("[Onboarding][PatchAttach] onboardingSelectedPatch saved", {
+            patchId,
+          });
+        }
+      } catch (error) {
+        console.warn("[Onboarding][PatchAttach] onboardingSelectedPatch save failed", error);
+      }
+      if (refreshDriverProfile) {
+        await refreshDriverProfile();
+      }
+      if (__DEV__) {
+        const storageKey = "milemend.appstate";
+        const driverProfileKey = driverProfileStorageKey;
+        setTimeout(async () => {
+          try {
+            const stored = await AsyncStorage.getItem(storageKey);
+            const parsed = stored ? JSON.parse(stored) : null;
+            console.log("[Onboarding][PatchAttach] persisted app state", {
+              storageKey,
+              attachedPatchId: parsed?.attachedPatchId ?? null,
+              profilePatchId: parsed?.profilePatchId ?? null,
+            });
+          } catch (error) {
+            console.warn("[Onboarding][PatchAttach] app state read failed", error);
+          }
+          try {
+            const storedProfile = await AsyncStorage.getItem(driverProfileKey);
+            const parsedProfile = storedProfile ? JSON.parse(storedProfile) : null;
+            console.log("[Onboarding][PatchAttach] persisted driver profile", {
+              driverProfileKey,
+              selectedPatchId: parsedProfile?.selectedPatchId ?? null,
+              recentPatches: Array.isArray(parsedProfile?.recentPatches)
+                ? parsedProfile.recentPatches.map((patch) => patch?.id ?? null)
+                : [],
+              earnedPatches: Array.isArray(parsedProfile?.earnedPatches)
+                ? parsedProfile.earnedPatches.map((patch) => patch?.id ?? null)
+                : [],
+            });
+          } catch (error) {
+            console.warn("[Onboarding][PatchAttach] driver profile read failed", error);
+          }
+        }, 250);
+      }
     },
-    [persistAttachedPatchId, setProfilePatchId]
+    [
+      driverProfile,
+      driverProfileStorageKey,
+      persistAttachedPatchId,
+      refreshDriverProfile,
+      setProfilePatchId,
+      updateDriverProfile,
+    ]
   );
 
   const requestNotificationsPermissionFlow = useCallback(async () => {
@@ -820,6 +927,7 @@ const OnboardingFlowView = ({ onComplete }) => {
             subtitle={item?.content?.subtitle || item?.subtitle}
             footer={item?.content?.footer}
             patchId={item?.content?.patchId}
+            patchTitle={item?.content?.title || item?.title}
             patchImageSource={item?.content?.patchImageSource}
             unrevealedPatchImageSource={item?.content?.unrevealedPatchImageSource}
             grandReveal={item?.content?.grandReveal ?? true}
@@ -836,6 +944,7 @@ const OnboardingFlowView = ({ onComplete }) => {
           <MomentumPatchRewardPage
             bottomInset={CTA_BOTTOM_INSET}
             patchId={item?.content?.patchId}
+            patchTitle={item?.content?.title || item?.title || "Momentum Patch"}
             patchImageSource={item?.content?.patchImageSource}
             unrevealedPatchImageSource={item?.content?.unrevealedPatchImageSource}
             grandReveal={item?.content?.grandReveal ?? true}

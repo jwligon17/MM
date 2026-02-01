@@ -41,8 +41,8 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 20,
-    elevation: 8,
+    zIndex: 9999,
+    elevation: 9999,
   },
   pressed: {
     opacity: 0.7,
