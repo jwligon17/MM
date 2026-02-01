@@ -1,0 +1,431 @@
+.mp-shell {
+  display: flex;
+  min-height: 100vh;
+  gap: 24px;
+  padding: 24px;
+  color: var(--text-primary);
+}
+
+.mp-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.mp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.mp-headerTitle {
+  font-size: 32px;
+  font-weight: 600;
+}
+
+.mp-headerMeta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.mp-city {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.mp-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #2bb673;
+  color: #0c2014;
+  font-weight: 700;
+}
+
+.mp-content {
+  display: grid;
+  gap: 20px;
+}
+
+.mp-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 22px;
+  align-items: stretch;
+}
+
+.mp-mapCard {
+  background: rgba(8, 12, 22, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 22px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 420px;
+  overflow: hidden;
+}
+
+.mp-mapHeader {
+  display: flex;
+  justify-content: space-between;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.mp-mapMeta {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.mp-mapCanvas {
+  flex: 1;
+  border-radius: 18px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 30% 35%, rgba(43, 182, 115, 0.14), transparent 55%),
+    radial-gradient(circle at 70% 60%, rgba(87, 142, 255, 0.12), transparent 50%),
+    linear-gradient(135deg, rgba(17, 26, 44, 0.55), rgba(6, 10, 18, 0.6));
+  position: relative;
+  min-height: 560px;
+}
+
+.mp-mapCanvas .leaflet-container {
+  width: 100%;
+  height: 100%;
+  min-height: 560px;
+  background: transparent;
+  font-family: var(--font-sans);
+}
+
+.mp-mapCanvas .leaflet-control-container {
+  z-index: 2;
+}
+
+.mp-mapCanvas .leaflet-control-attribution {
+  background: rgba(15, 20, 30, 0.6);
+  color: rgba(255, 255, 255, 0.7);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.mp-mapCanvas .leaflet-control-attribution a {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.mp-overlay {
+  position: absolute;
+  z-index: 4;
+  color: #f2f5f9;
+  background: rgba(12, 16, 26, 0.48);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  padding: 16px;
+  box-shadow: 0 20px 40px rgba(8, 12, 20, 0.45);
+  backdrop-filter: blur(8px);
+}
+
+.mp-overlayLeft {
+  left: 20px;
+  bottom: 20px;
+  width: min(280px, 80%);
+}
+
+.mp-overlayRight {
+  right: 20px;
+  top: 20px;
+  width: min(320px, 88%);
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+}
+
+.mp-overlayTitle {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.mp-overlaySection {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.mp-overlayLabel {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.mp-toggleGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mp-toggleStack {
+  display: grid;
+  gap: 8px;
+}
+
+.mp-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.mp-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: #2bb673;
+}
+
+.mp-select {
+  background: rgba(0, 0, 0, 0.45);
+  color: #f2f5f9;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.mp-overlayBlock {
+  display: grid;
+  gap: 12px;
+}
+
+.mp-overlaySub {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  margin-top: -8px;
+}
+
+.mp-aiLayout {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.mp-pieChart {
+  width: 120px;
+  height: 120px;
+}
+
+.mp-aiLegend {
+  display: grid;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.mp-aiLegendRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mp-aiLegendSwatch {
+  width: 10px;
+  height: 24px;
+  border-radius: 6px;
+}
+
+.mp-swatchGreen {
+  background: #2bb673;
+}
+
+.mp-swatchOrange {
+  background: #f2a650;
+}
+
+.mp-swatchBlue {
+  background: #5aa7ff;
+}
+
+.mp-swatchTeal {
+  background: #31c5c0;
+}
+
+.mp-aiLegendLabel {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.mp-aiLegendValue {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.mp-vendorCard {
+  background: rgba(15, 20, 30, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.mp-vendorHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.mp-vendorName {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.mp-vendorMeta {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+}
+
+.mp-vendorCard ul {
+  margin: 0;
+  padding-left: 18px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.mp-ring {
+  width: 40px;
+  height: 40px;
+}
+
+.mp-vendorRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(15, 20, 30, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 13px;
+}
+
+.mp-rail {
+  display: grid;
+  gap: 18px;
+}
+
+.mp-card {
+  border-radius: 20px;
+  padding: 18px;
+  display: grid;
+  gap: 12px;
+  min-height: 120px;
+}
+
+.mp-cardLight {
+  background: #fefefe;
+  color: #1b1f24;
+  border: 1px solid rgba(24, 32, 58, 0.08);
+  box-shadow: 0 14px 28px rgba(20, 24, 36, 0.1);
+}
+
+.mp-cardHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mp-cardTitle {
+  font-size: 14px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mp-infoIcon {
+  width: 16px;
+  height: 16px;
+  color: rgba(27, 31, 36, 0.5);
+  display: inline-flex;
+}
+
+.mp-infoIcon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.mp-cardDesc {
+  font-size: 11px;
+  color: rgba(27, 31, 36, 0.5);
+  text-align: right;
+  max-width: 160px;
+}
+
+.mp-cardValue {
+  font-size: 34px;
+  font-weight: 600;
+  color: #1b1f24;
+}
+
+.mp-cardValueWarn {
+  color: #f08422;
+}
+
+.mp-cardList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+  color: rgba(27, 31, 36, 0.7);
+  font-size: 13px;
+}
+
+@media (max-width: 1024px) {
+  .mp-shell {
+    flex-direction: column;
+  }
+
+  .mp-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mp-overlayLeft,
+  .mp-overlayRight {
+    position: static;
+    width: 100%;
+    margin-top: 12px;
+  }
+
+  .mp-overlayRight {
+    padding: 14px;
+  }
+}
+
+@media (max-width: 720px) {
+  .mp-shell {
+    padding: 16px;
+  }
+
+  .mp-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .mp-headerTitle {
+    font-size: 26px;
+  }
+
+  .mp-mapCanvas,
+  .mp-mapCanvas .leaflet-container {
+    min-height: 360px;
+  }
+}

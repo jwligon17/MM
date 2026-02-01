@@ -16,3 +16,13 @@ Build and serve the production bundle to quickly test whether the lag also appea
 npm run build
 npm run preview
 ```
+
+## Canonical app folder (municipal-portal/)
+
+The canonical Municipal Portal UI lives in `municipal-portal/` (this folder). The nested `municipal-portal/municipal-portal/` is legacy and is not deployed.
+
+```bash
+npm --prefix municipal-portal run dev
+npm --prefix municipal-portal run build
+firebase deploy --only hosting:municipal-portal
+```
