@@ -14,14 +14,27 @@ const roadTypes = [
 const timeframes = ["Last 30 Days", "Last 7 Days", "Last 90 Days"];
 
 export default function FiltersOverlay({
-  conditionFilters,
-  typeFilters,
-  onToggleCondition,
-  onToggleType,
+  className = "",
+  variant = "popover",
+  conditionFilters = {},
+  typeFilters = {},
+  onToggleCondition = () => {},
+  onToggleType = () => {},
+  timeframe = timeframes[0],
+  onTimeframeChange = () => {},
+  visibleCount,
 }) {
+  const baseClass =
+    variant === "dock" ? "map-overlay map-overlay--left" : "filters-popover";
+
   return (
-    <div className="map-overlay map-overlay--left">
-      <div className="overlay__title">Filters &amp; Layers</div>
+    <div
+      className={`${baseClass} demo-frosted-glass pointer-events-auto ${className}`.trim()}
+    >
+      <div className="overlay__title">
+        Filters &amp; Layers
+        {typeof visibleCount === "number" ? ` • ${visibleCount}` : ""}
+      </div>
 
       <div className="overlay__section">
         <div className="overlay__label">Road Condition</div>
@@ -30,7 +43,7 @@ export default function FiltersOverlay({
             <button
               key={option.value}
               className={`toggle ${
-                conditionFilters[option.value] ? "toggle--active" : ""
+                conditionFilters?.[option.value] ? "toggle--active" : ""
               }`}
               type="button"
               onClick={() => onToggleCondition(option.value)}
@@ -48,7 +61,7 @@ export default function FiltersOverlay({
             <button
               key={option.value}
               className={`toggle ${
-                typeFilters[option.value] ? "toggle--active" : ""
+                typeFilters?.[option.value] ? "toggle--active" : ""
               }`}
               type="button"
               onClick={() => onToggleType(option.value)}
@@ -61,7 +74,11 @@ export default function FiltersOverlay({
 
       <div className="overlay__section">
         <div className="overlay__label">Data Window</div>
-        <select className="overlay-select" defaultValue={timeframes[0]}>
+        <select
+          className="overlay-select"
+          value={timeframe}
+          onChange={(event) => onTimeframeChange(event.target.value)}
+        >
           {timeframes.map((option) => (
             <option key={option} value={option}>
               {option}

@@ -79,4 +79,44 @@ export const segments = [
       [32.445, -99.762],
     ],
   },
+  {
+    id: "seg-9",
+    roadType: "highway",
+    condition: "fair",
+    polyline: [
+      [32.487, -99.742],
+      [32.479, -99.735],
+      [32.471, -99.729],
+    ],
+  },
+  {
+    id: "seg-10",
+    roadType: "local",
+    condition: "good",
+    polyline: [
+      [32.469, -99.755],
+      [32.463, -99.748],
+      [32.457, -99.741],
+    ],
+  },
+  {
+    id: "seg-11",
+    roadType: "other",
+    condition: "poor",
+    polyline: [
+      [32.441, -99.723],
+      [32.435, -99.716],
+      [32.429, -99.709],
+    ],
+  },
+  {
+    id: "seg-12",
+    roadType: "local",
+    condition: "critical",
+    polyline: [
+      [32.427, -99.748],
+      [32.421, -99.741],
+      [32.415, -99.734],
+    ],
+  },
 ];

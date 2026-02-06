@@ -1,19 +1,23 @@
 export const roadRating = {
-  value: "76%",
+  value: "78%",
   label: "Road Rating",
+  delta: "+2.4%",
+  trend: "up",
+  note: "Improvement – 30 day analysis",
 };
 
-export const appUsers = {
-  value: "14K",
-  label: "App Users",
+export const milesMapped = {
+  value: "1757 mi",
+  label: "Miles Mapped",
+  delta: "-4.1%",
+  trend: "down",
+  note: "Decline – 30 day analysis",
 };
 
-export const mostNeededRoadRepairs = [
-  "450–550 Buffalo Gap Rd.",
-  "190–290 Main Street",
-  "8200–10200 S. 27th Street",
-  "320–520 Ambler Ave.",
-  "2090–2290 N 10th Street",
-  "150–350 N 18th Street",
-  "1060–2060 Waterway Dr.",
-];
+export const repairRate = {
+  value: "237",
+  label: "Repair Rate",
+  delta: "+1.2%",
+  trend: "up",
+  note: "Improvement – 30 day analysis",
+};

@@ -10,18 +10,15 @@ const legend = [
 
 export default function MendAIOverlay() {
   return (
-    <div className="overlay-block">
-      <div className="overlay__title">Mend AI</div>
-      <div className="mend-ai">
-        <PieChart />
-        <div className="mend-ai__legend">
-          {legend.map((item) => (
-            <div key={item.label} className="legend-row">
-              <span className="legend-dot" style={{ background: item.color }} />
-              <span>{item.label}</span>
-            </div>
-          ))}
-        </div>
+    <div className="mend-ai">
+      <PieChart />
+      <div className="mend-ai__legend">
+        {legend.map((item) => (
+          <div key={item.label} className="legend-row">
+            <span className="legend-dot" style={{ background: item.color }} />
+            <span>{item.label}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

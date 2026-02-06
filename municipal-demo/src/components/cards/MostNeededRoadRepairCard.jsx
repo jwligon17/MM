@@ -1,9 +1,14 @@
 import React from "react";
+import CollapsibleGlassCard from "../CollapsibleGlassCard";
 
 export default function MostNeededRoadRepairCard({ roads }) {
   return (
-    <div className="rail-card">
-      <div className="rail-card__title">Most Needed Road Repair</div>
+    <CollapsibleGlassCard
+      title={<span className="rail-card__title">Most Needed Road Repair</span>}
+      className="rail-card mm-frosted-glass mm-frosted-glass--light"
+      defaultExpanded
+      storageKey="mm:dashboard:card:most-needed-repair"
+    >
       <div className="rail-card__list">
         {roads.map((road) => (
           <div key={road} className="rail-card__list-item">
@@ -12,6 +17,6 @@ export default function MostNeededRoadRepairCard({ roads }) {
           </div>
         ))}
       </div>
-    </div>
+    </CollapsibleGlassCard>
   );
 }

@@ -5,7 +5,7 @@ const roadTypeOptions = ['Highways', 'Local Streets', 'Other'];
 
 function FiltersOverlay() {
   return (
-    <div className="mp-overlay mp-overlayLeft" aria-label="Filters and layers">
+    <div className="mp-overlay mp-overlayLeft mp-glassCard" aria-label="Filters and layers">
       <div className="mp-overlayTitle">Filters &amp; Layers</div>
 
       <div className="mp-overlaySection">

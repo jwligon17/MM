@@ -26,7 +26,7 @@ function VendorNetworkOverlay() {
       <div className="mp-overlayTitle">Vendor Network</div>
       <div className="mp-overlaySub">Verified Crews</div>
 
-      <div className="mp-vendorCard">
+      <div className="mp-vendorCard mp-glassCard">
         <div className="mp-vendorHeader">
           <div>
             <div className="mp-vendorName">Montgomery Roads</div>
@@ -41,7 +41,7 @@ function VendorNetworkOverlay() {
         </ul>
       </div>
 
-      <div className="mp-vendorCard">
+      <div className="mp-vendorCard mp-glassCard">
         <div className="mp-vendorHeader">
           <div>
             <div className="mp-vendorName">ABI Construction</div>
@@ -56,7 +56,7 @@ function VendorNetworkOverlay() {
         </ul>
       </div>
 
-      <div className="mp-vendorRow">
+      <div className="mp-vendorRow mp-glassCard">
         <span>Gemini LLC</span>
         <span className="mp-vendorMeta">Tap to expand</span>
       </div>

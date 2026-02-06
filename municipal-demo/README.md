@@ -21,6 +21,17 @@ Deploy municipal-demo only:
 firebase deploy --only hosting:municipal-demo
 ```
 
+## Google Maps Setup
+
+- Create an API key in Google Cloud Console.
+- Enable the Maps JavaScript API.
+- Enable Billing for the project.
+- Restrict the key by HTTP referrers:
+  - http://localhost:5173/*
+  - (add your production domain later)
+- Add the key to `Municipal-Demo/.env.local` as `VITE_GOOGLE_MAPS_API_KEY=...`.
+- Restart the dev server after changing env vars.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

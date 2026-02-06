@@ -7,6 +7,7 @@ import PublicOnly from './routes/PublicOnly';
 import Dashboard from './pages/Dashboard';
 import LoginPage from './pages/LoginPage';
 import FirestoreDiagnosticsPage from './pages/FirestoreDiagnosticsPage';
+import InsightsPage from './pages/InsightsPage';
 import PortalErrorBoundary from './components/PortalErrorBoundary';
 
 const isDevMode = import.meta.env.DEV;
@@ -31,6 +32,7 @@ export function AppRoutes() {
         element={<ProtectedRoutes />}
       >
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/insights" element={<InsightsPage />} />
         <Route
           path="/debug/firestore"
           element={isDevMode ? <FirestoreDiagnosticsPage /> : <Navigate to="/dashboard" replace />}

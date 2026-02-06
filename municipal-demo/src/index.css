@@ -4,6 +4,12 @@
   padding: 0;
 }
 
+:root {
+  --mm-motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --mm-motion-card: 220ms;
+  --mm-motion-dock: 240ms;
+}
+
 body {
   font-family: "Poppins", system-ui, sans-serif;
 }
@@ -11,4 +17,14 @@ body {
 button,
 input {
   font-family: inherit;
+}
+
+.dashboard-map__container {
+  position: relative;
+  z-index: 0;
+}
+
+.mm-map-overlay {
+  position: absolute;
+  z-index: 950;
 }

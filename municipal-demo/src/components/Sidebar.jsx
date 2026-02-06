@@ -1,13 +1,13 @@
 import React from "react";
 
 const navItems = [
-  { label: "Home", icon: "M4 6h16v12H4z" },
-  { label: "Created by Me", icon: "M12 6a4 4 0 1 0 0 8a4 4 0 0 0 0-8Zm-7 14a7 7 0 0 1 14 0" },
-  { label: "Saved", icon: "M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1Z" },
-  { label: "Insights", icon: "M4 19h16M7 16V9m5 7V5m5 11v-6" },
+  { label: "Home", icon: "M4 10.5 12 4l8 6.5V20H4Z", path: "/" },
+  { label: "Dispatch", icon: "M4 6h16v5H4zm0 7h10v5H4z", path: "/dispatch" },
+  { label: "Media Room", icon: "M4 7h16v10H4zm5 12h6", path: "/media-room" },
+  { label: "Insights", icon: "M4 19h16M7 16V9m5 7V5m5 11v-6", path: "/insights" },
 ];
 
-export default function Sidebar({ isOpen, onClose }) {
+export default function Sidebar({ isOpen, onClose, activeRoute = "/", onNavigate }) {
   return (
     <aside className={`sidebar ${isOpen ? "sidebar--open" : ""}`}>
       <div className="sidebar__header">
@@ -76,27 +76,38 @@ export default function Sidebar({ isOpen, onClose }) {
       </label>
 
       <nav className="sidebar__nav">
-        {navItems.map((item) => (
-          <button
-            key={item.label}
-            className={`nav__item ${item.label === "Insights" ? "active" : ""}`}
-            type="button"
-          >
-            <span className="nav__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24">
-                <path
-                  d={item.icon}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </span>
-            {item.label}
-          </button>
-        ))}
+        {navItems.map((item) => {
+          const isActive = Boolean(item.path && item.path === activeRoute);
+          const handleClick = () => {
+            if (!item.path || !onNavigate) return;
+            onNavigate(item.path);
+            if (onClose) onClose();
+          };
+
+          return (
+            <button
+              key={item.label}
+              className={`nav__item ${isActive ? "active" : ""}`}
+              type="button"
+              onClick={handleClick}
+              aria-current={isActive ? "page" : undefined}
+            >
+              <span className="nav__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path
+                    d={item.icon}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </span>
+              {item.label}
+            </button>
+          );
+        })}
       </nav>
     </aside>
   );

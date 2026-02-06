@@ -16,7 +16,7 @@ function DashboardMap() {
         />
       </MapContainer>
       <FiltersOverlay />
-      <div className="mp-overlay mp-overlayRight">
+      <div className="mp-overlay mp-overlayRight mp-glassCard">
         <MendAIOverlay />
         <VendorNetworkOverlay />
       </div>
